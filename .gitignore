@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# KISISEL VERI -- BUNLAR ASLA DEPOYA GIRMEZ
+#
+# Bu klasorde gercek icra dosyalarina ait veri bulunuyor: borclularin SGK
+# hizmet dokumleri, uretilen tutanaklar, karar fotograflari. Herkese acik bir
+# depoya bir kez girerse git gecmisinden silinmesi pratikte imkansiz.
+#
+# Kural: SGK dokumu, uretilen belge ve gorsel HICBIR sekilde eklenmez.
+# Yeni bir dosya turu eklerken once "icinde kisi verisi var mi" diye sor.
+# ---------------------------------------------------------------------------
+*.xls
+*.xlsx
+*.xlsm
+*.docx
+*.doc
+*.pdf
+*.jpg
+*.jpeg
+*.png
+
+# Proje calisma notlari. Icinde gercek dosya numarasi, borclu adi, daire adi
+# ve karar tarihi birlikte geciyor -- yani gercek bir icra dosyasini
+# tanimliyor. Temizlenmis bir surumu istenirse ayrica hazirlanir.
+CLAUDE.md
+
+# ---------------------------------------------------------------------------
+# Uretilen dosyalar
+# ---------------------------------------------------------------------------
+__pycache__/
+*.pyc
+build/
+dagitim/
+*.spec

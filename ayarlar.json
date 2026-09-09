@@ -1,0 +1,50 @@
+{
+  "_aciklama": "Net asgari ucret donemleri. 'ceyrek' yazilirsa program onu aynen kullanir; yazilmazsa net * oran hesaplar. Gercek bir icra dairesinin 2026 tarihli tutanaginda 2026 icin 7018.87 kullanilmis (matematiksel yuvarlama 7018.88 verir) - bu yuzden elle yazildi.",
+  "ay_gun": 30,
+  "oran": 0.25,
+  "donemler": [
+    {
+      "baslangic": "2021-01",
+      "net": 2825.9,
+      "brut": 3577.5
+    },
+    {
+      "baslangic": "2022-01",
+      "net": 4253.4,
+      "brut": 5004.0
+    },
+    {
+      "baslangic": "2022-07",
+      "net": 5500.35,
+      "brut": 6471.0
+    },
+    {
+      "baslangic": "2023-01",
+      "net": 8506.8,
+      "brut": 10008.0
+    },
+    {
+      "baslangic": "2023-07",
+      "net": 11402.32,
+      "brut": 13414.5
+    },
+    {
+      "baslangic": "2024-01",
+      "net": 17002.12,
+      "brut": 20002.5
+    },
+    {
+      "baslangic": "2025-01",
+      "net": 22104.67,
+      "ceyrek": 5526.17,
+      "brut": 26005.5
+    },
+    {
+      "baslangic": "2026-01",
+      "net": 28075.5,
+      "ceyrek": 7018.87,
+      "brut": 33030.0
+    }
+  ],
+  "_aciklama2": "'brut' = o donemin BRUT asgari ucreti. Hesapta kullanilmaz; Excel'deki PEK sutunuyla kiyaslanip 'bu adam asgari ucretin ustunde mi bildirilmis' uyarisi vermek icin duruyor."
+}
