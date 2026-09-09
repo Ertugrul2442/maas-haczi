@@ -31,3 +31,7 @@ __pycache__/
 build/
 dagitim/
 *.spec
+
+# Port kiyasinin uretttigi gecici veri (py -3.13 web/kiyas_net_maas.py ile
+# saniyeler icinde yeniden uretilir, 6 MB, depoda durmasi anlamsiz).
+web/kiyas_veri.json

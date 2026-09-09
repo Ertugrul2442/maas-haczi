@@ -1,0 +1,69 @@
+name: Web sürümü testleri
+
+# NE YAPAR: tarayıcı sürümünün hesap motorunu sınar ve — asıl önemlisi —
+# masaüstü Python sürümüyle BİREBİR aynı sonucu verdiğini her itişte ölçer.
+#
+# NEDEN ÖNEMLİ: web sürümü Python'un round() ve Decimal'inin JS karşılığını
+# elle yazmak zorunda kaldı (JS'te ikisi de yok). Bu tür bir port sessizce
+# ayrışır: masaüstü testleri geçmeye devam eder, web kuruş kaydırır, kimse
+# fark etmez. Ölçüldü: Math.round 47.310 kombinasyonun 864'ünde yanılıyordu
+# ve karardaki gerçek dosyada bile 3.509,44 diyordu (doğrusu 3.509,43).
+#
+# ⚠ Buradaki testlerin HİÇBİRİ SGK dökümü istemiyor, o yüzden depoda kişisel
+# veri olmadan koşabiliyorlar. Python testlerinden üçü (test_hesap,
+# test_pekten_net, test_ilk_ay) döküm istediği için hâlâ CI'da koşamıyor.
+
+on:
+  push:
+    paths:
+      - "web/**"
+      - "net_maas.py"
+      - ".github/workflows/web-testleri.yml"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # 1) Yuvarlama: Python'un round(x, 2)'sinin taklidi doğru mu?
+      - name: Yuvarlama testi
+        run: node web/test_yuvarla.js
+
+      # 2) Net ücret: 60/60 ay resmî net asgari ücreti veriyor mu?
+      - name: Net ücret testi (JS)
+        run: node web/test_net_maas.js
+
+      # 3) Aynı test Python tarafında da geçiyor mu?
+      - name: Net ücret testi (Python)
+        run: python test_net_maas.py
+
+      # 4) İki testin ÇIKTISI harfi harfine aynı mı? Bu, "ikisi de geçti"den
+      #    daha güçlü: her satırdaki rakam da tutmalı.
+      - name: İki sürümün çıktısı aynı mı
+        run: |
+          python test_net_maas.py  > /tmp/py.txt
+          node web/test_net_maas.js > /tmp/js.txt
+          diff /tmp/py.txt /tmp/js.txt && echo "Çıktılar birebir aynı."
+
+      # 5) En güçlü ölçüt: 28.000+ senaryoda Python'un Decimal sonucuyla
+      #    JS'in sonucu değer değer kıyaslanıyor.
+      - name: Python'a karşı tarama (28.000+ senaryo)
+        run: |
+          python web/kiyas_net_maas.py > web/kiyas_veri.json
+          node web/kiyas_net_maas.js web/kiyas_veri.json
+
+      # 6) Dosyalar tarayıcıda da yükleniyor mu? (require/module olmadan)
+      #    "Node'da çalışıyor" ile "tarayıcıda çalışıyor" ayrı sorular.
+      - name: Tarayıcı gibi yükleniyor mu
+        run: node web/tarayici_kontrol.js

@@ -29,43 +29,45 @@
 // YONTEM: toFixed(20) ile yeterince uzun ondalik gosterim alinip 2. haneden
 // sonrasi STRING olarak kiyaslaniyor; tam yarim ise cifte yuvarlaniyor.
 
-"use strict";
+(function (kok) {
+  "use strict";
 
-function yuvarla2(x) {
-  if (!isFinite(x)) return x;
-  const eksi = x < 0;
-  const a = Math.abs(x);
-  const s = a.toFixed(20);
-  const nokta = s.indexOf(".");
-  const tam = s.slice(0, nokta);
-  const kesir = s.slice(nokta + 1);
-  const ilkIki = kesir.slice(0, 2).padEnd(2, "0");
-  const geri = kesir.slice(2);
+  function yuvarla2(x) {
+    if (!isFinite(x)) return x;
+    const eksi = x < 0;
+    const a = Math.abs(x);
+    const s = a.toFixed(20);
+    const nokta = s.indexOf(".");
+    const tam = s.slice(0, nokta);
+    const kesir = s.slice(nokta + 1);
+    const ilkIki = kesir.slice(0, 2).padEnd(2, "0");
+    const geri = kesir.slice(2);
 
-  let taban = BigInt(tam) * 100n + BigInt(ilkIki);
-  let yukari;
-  if (geri.length === 0) {
-    yukari = false;
-  } else {
-    const yarim = "5" + "0".repeat(geri.length - 1);
-    if (geri > yarim) yukari = true;
-    else if (geri < yarim) yukari = false;
-    else yukari = taban % 2n === 1n; // tam yarim -> cifte yuvarla
+    let taban = BigInt(tam) * 100n + BigInt(ilkIki);
+    let yukari;
+    if (geri.length === 0) {
+      yukari = false;
+    } else {
+      const yarim = "5" + "0".repeat(geri.length - 1);
+      if (geri > yarim) yukari = true;
+      else if (geri < yarim) yukari = false;
+      else yukari = taban % 2n === 1n; // tam yarim -> cifte yuvarla
+    }
+    if (yukari) taban += 1n;
+    const sonuc = Number(taban) / 100;
+    return eksi ? -sonuc : sonuc;
   }
-  if (yukari) taban += 1n;
-  const sonuc = Number(taban) / 100;
-  return eksi ? -sonuc : sonuc;
-}
 
-// 1/4'un ASAGI kirpilmasi (IIK 83 ust sinir -- asilmasin).
-// Python tarafinda net_maas.ceyrek(): Decimal(net)/4, ROUND_DOWN.
-// Burada kurusa cevirip tam sayi bolmesi yapiliyor; float hatasina karsi
-// once yuvarla2 ile kurusa oturtuluyor.
-function ceyrekAsagi(net) {
-  const kurus = Math.round(yuvarla2(net) * 100);
-  return Math.floor(kurus / 4) / 100;
-}
+  // 1/4'un ASAGI kirpilmasi (IIK 83 ust sinir -- asilmasin).
+  // Python tarafinda net_maas.ceyrek(): Decimal(net)/4, ROUND_DOWN.
+  // Burada kurusa cevirip tam sayi bolmesi yapiliyor; float hatasina karsi
+  // once yuvarla2 ile kurusa oturtuluyor.
+  function ceyrekAsagi(net) {
+    const kurus = Math.round(yuvarla2(net) * 100);
+    return Math.floor(kurus / 4) / 100;
+  }
 
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = { yuvarla2, ceyrekAsagi };
-}
+  const disa = { yuvarla2: yuvarla2, ceyrekAsagi: ceyrekAsagi };
+  if (typeof module !== "undefined" && module.exports) module.exports = disa;
+  else kok.Yuvarla = disa;
+})(typeof globalThis !== "undefined" ? globalThis : this);
