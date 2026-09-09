@@ -1,0 +1,104 @@
+name: Asgari ücret ve vergi tarifesini güncelle
+
+# Nafaka projesindeki iş akışının kardeşi, ama veri AYLIK değil YILLIK:
+# asgari ücret genelde Aralık sonunda açıklanıp 1 Ocak'ta yürürlüğe giriyor,
+# bazı yıllarda (2022, 2023) Temmuz'da ikinci bir zam geldi. Kaçırmamak için
+# her gün bir kez bakılıyor. Veri değişmemişse HİÇBİR ŞEY yapılmıyor -
+# boş commit atılmıyor, o yüzden her gün koşmasının zararı yok.
+#
+# ⚠ NAFAKADAN GELEN DERS: GitHub'ın kendi `schedule` tetikleyicisi o depoda
+# HİÇ çalışmadı (03.09.2026'da ölçüldü, schedule sayacı 0 kaldı), tetikleme
+# Oracle sunucusundaki cron'a taşındı. Burada da çalışmayabilir. Cron yine de
+# duruyor; çalışırsa bedava, çalışmazsa `workflow_dispatch` ile elle ya da
+# dışarıdan tetiklenir.
+on:
+  schedule:
+    - cron: "0 6 * * *"     # UTC 06:00 = TR 09:00
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: veri-guncelle
+  cancel-in-progress: false
+
+jobs:
+  guncelle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: PDF okuyucu
+        run: pip install --quiet pymupdf
+
+      # Önce çekicinin KENDİ kontrolleri sağlam mı. Ağa çıkmaz.
+      - name: Güvenlik kontrollerinin testi
+        run: python test_veri_cek.py
+
+      # Net ücret hesabı 60/60 ay resmî net asgari ücretle tutuyor mu.
+      # SGK dökümü gerektirmeyen tek diğer test bu.
+      - name: Net ücret hesabı testi
+        run: python test_net_maas.py
+
+      - name: Resmî kaynaktan çek
+        id: cek
+        run: |
+          set +e
+          python veri_cek.py
+          kod=$?
+          set -e
+          case $kod in
+            0) echo "yeni=evet"  >> "$GITHUB_OUTPUT"; echo "Yeni dönem geldi." ;;
+            3) echo "yeni=hayir" >> "$GITHUB_OUTPUT"; echo "Değişiklik yok." ;;
+            *) echo "::error::veri_cek.py $kod koduyla düştü - ayarlar.json DEĞİŞMEDİ, eski veri duruyor"
+               exit 1 ;;
+          esac
+
+      # ayarlar.json yazıldıktan sonra hâlâ yüklenebiliyor mu?
+      # test_hesap.py bunu daha iyi yapardı ama o SGK dökümü istiyor ve döküm
+      # kişisel veri olduğu için depoda YOK. Bu kontrol onun yerine geçmiyor,
+      # sadece "dosya bozulmadı" diyor.
+      - name: Yazılan ayarlar sağlam mı
+        if: steps.cek.outputs.yeni == 'evet'
+        run: |
+          python - <<'PY'
+          import hesap
+          a = hesap.Ayarlar.yukle()
+          y, ay = a.son_donem()
+          net, ceyrek, brut = a.donem_bul(y, ay)
+          print("son donem %04d-%02d  net %.2f  ceyrek %.2f  brut %.2f"
+                % (y, ay, net, ceyrek, brut))
+          assert ceyrek > 0 and net > ceyrek, "ceyrek/net tutarsiz"
+          assert brut and brut > net, "brut/net tutarsiz"
+          PY
+
+      - name: İşle ve gönder
+        if: steps.cek.outputs.yeni == 'evet'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ayarlar.json
+          if git diff --cached --quiet; then
+            echo "::warning::veri_cek.py yeni veri dedi ama dosyada fark yok - beklenmedik"
+            exit 0
+          fi
+          donem=$(python -c "import json;print(json.load(open('ayarlar.json',encoding='utf-8'))['donemler'][-1]['baslangic'])")
+          git commit -m "veri: $donem asgari ucret donemi"
+          git push
+          {
+            echo "### $donem dönemi eklendi"
+            echo ""
+            echo "⚠ **1/4 kontrol edilmeli.** Netin dörtte biri aşağı kırpılarak"
+            echo "yazıldı. Daire tutarlı yuvarlamıyor: 2026'da aşağı (7.018,87),"
+            echo "2025'te yukarı (5.526,17). İlk gerçek dosyada dairenin rakamıyla"
+            echo "karşılaştır, gerekirse \`ayarlar.json\`'da elle düzelt."
+            echo ""
+            echo "⚠ **Gelir vergisi tarifesi otomatik yazılmaz.** \`net_maas.py\`'deki"
+            echo "\`TARIFE\` sözlüğüne yeni yılın satırı elle eklenmeli - iş akışı"
+            echo "kaydında yapıştırılacak satır basılı."
+          } >> "$GITHUB_STEP_SUMMARY"
