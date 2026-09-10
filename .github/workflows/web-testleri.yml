@@ -19,6 +19,8 @@ on:
       - "web/**"
       - "net_maas.py"
       - "hesap.py"
+      - "disa_aktar.py"
+      - "ayarlar.json"
       - ".github/workflows/web-testleri.yml"
   pull_request:
   workflow_dispatch:
@@ -37,10 +39,11 @@ jobs:
         with:
           python-version: "3.13"
 
-      # hesap.py .xls okumak icin xlrd import ediyor; sentetik kiyas dosya
-      # okumasa da import satiri calisiyor.
-      - name: xlrd
-        run: pip install --quiet xlrd
+      # xlrd: hesap.py .xls okumak icin import ediyor.
+      # xlwt: dokum kiyasinin sentetik .xls dosyalarini yazmasi icin.
+      # python-docx: Word kiyasinin IKI ciktiyi da acip okumasi icin.
+      - name: Python paketleri
+        run: pip install --quiet xlrd xlwt python-docx
 
       # 1) Yuvarlama: Python'un round(x, 2)'sinin taklidi doğru mu?
       - name: Yuvarlama testi
@@ -79,7 +82,28 @@ jobs:
           python web/kiyas_hesap.py --sentetik > web/kiyas_sentetik.json
           node web/kiyas_hesap.js web/kiyas_sentetik.json
 
-      # 7) Dosyalar tarayıcıda da yükleniyor mu? (require/module olmadan)
+      # 7) Dosya okuma: AYNI .xls'i xlrd (masaüstü) ve SheetJS (tarayıcı)
+      #    aynı mı okuyor? Sentetik dökümler xlwt ile o an üretiliyor —
+      #    kişisel veri yok, CI'da koşabiliyorlar.
+      #    ⚠ Ölçüldü (10.09.2026): gerçek lll.xls'te BÜTÜN hücreler metin,
+      #    yani "sayısal hücre" ve "biçimli sayı" yolları gerçek dosyada HİÇ
+      #    çalışmıyor. Sentetikler tam da o yolları zorluyor.
+      - name: Döküm okuma xlrd'ye karşı (sentetik .xls)
+        run: |
+          python web/kiyas_dokum.py --sentetik > web/kiyas_dokum_veri.json
+          node web/kiyas_dokum.js web/kiyas_dokum_veri.json
+
+      # 8) Word çıktısı: python-docx ile JSZip aynı belgeyi mi üretiyor?
+      #    Paragraf paragraf, hücre hücre — metin, hiza, punto, kalınlık,
+      #    girinti, sayfa kırılması, sayfa ölçüsü, satır aralığı.
+      #    ⚠ Satır aralığı ve sayfa ölçüsü BOŞUNA kıyaslanmıyor: PUNTO_KADEME
+      #    eşikleri Word'e saydırılarak, python-docx'in LETTER + 1,15 satır
+      #    aralıklı şablonuyla ölçüldü. JS iskeleti A4 üretirse tutanak
+      #    SESSİZCE 2. sayfaya taşar.
+      - name: Word çıktısı python-docx'e karşı
+        run: python web/kiyas_word.py
+
+      # 9) Dosyalar tarayıcıda da yükleniyor mu? (require/module olmadan)
       #    "Node'da çalışıyor" ile "tarayıcıda çalışıyor" ayrı sorular.
       - name: Tarayıcı gibi yükleniyor mu
         run: node web/tarayici_kontrol.js

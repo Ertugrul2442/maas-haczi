@@ -18,7 +18,12 @@ const vm = require("vm");
 const fs = require("fs");
 const path = require("path");
 
-const DOSYALAR = ["desimal.js", "yuvarla.js", "net_maas.js", "hesap.js"];
+// Once kutuphaneler (tarayicida da <script src> ile once onlar gelir), sonra
+// bizim dosyalarimiz. Kutuphaneler kendi kuresel adlarini birakiyor; asagida
+// "biz ne biraktik" olculurken onlar disarida tutuluyor.
+const KUTUPHANELER = ["lib/xlsx.full.min.js", "lib/jszip.min.js"];
+const DOSYALAR = ["desimal.js", "yuvarla.js", "net_maas.js", "hesap.js",
+  "dokum_oku.js", "disa_aktar.js"];
 const klasor = __dirname;
 
 let gecen = 0;
@@ -41,16 +46,23 @@ console.log("=".repeat(72));
 // Tarayicidaki gibi: sadece console var, modul sistemi YOK.
 const baglam = vm.createContext({ console: console });
 
-for (const d of DOSYALAR) {
-  try {
-    vm.runInContext(fs.readFileSync(path.join(klasor, d), "utf8"), baglam, { filename: d });
-    gecen += 1;
-    console.log("  TAMAM  " + d + " yuklendi");
-  } catch (e) {
-    kalan += 1;
-    console.log("  HATA   " + d + " yuklenemedi: " + e.message);
+function yukle(liste) {
+  for (const d of liste) {
+    try {
+      vm.runInContext(fs.readFileSync(path.join(klasor, d), "utf8"), baglam,
+        { filename: d });
+      gecen += 1;
+      console.log("  TAMAM  " + d + " yuklendi");
+    } catch (e) {
+      kalan += 1;
+      console.log("  HATA   " + d + " yuklenemedi: " + e.message);
+    }
   }
 }
+
+yukle(KUTUPHANELER);
+const KUTUPHANE_ADLARI = Object.keys(baglam).sort();   // bunlar bize ait degil
+yukle(DOSYALAR);
 
 const olc = (kod) => vm.runInContext(kod, baglam);
 
@@ -61,10 +73,16 @@ const AYAR_METIN = fs.readFileSync(path.join(klasor, "..", "ayarlar.json"), "utf
 onay("baglamda require/module yok",
   olc("(typeof require === 'undefined') && (typeof module === 'undefined')"), "true");
 
-// Kuresel isim kirliligi: sadece uc ad birakilmali, yardimci fonksiyonlar degil.
-onay("birakilan kuresel adlar",
-  olc("Object.keys(this).filter(a => a !== 'console').sort().join(',')"),
-  "Desimal,Hesap,NetMaas,Yuvarla");
+// Kuresel isim kirliligi: bizim dosyalarimiz SADECE su adlari birakmali,
+// yardimci fonksiyonlar sizmamali. Kutuphanelerin kendi adlari dusuluyor.
+const bizimkiler = Object.keys(baglam)
+  .filter((a) => a !== "console" && KUTUPHANE_ADLARI.indexOf(a) === -1)
+  .sort().join(",");
+onay("birakilan kuresel adlar (kutuphaneler haric)", bizimkiler,
+  "Desimal,DisaAktar,DokumOku,Hesap,NetMaas,Yuvarla");
+
+onay("SheetJS kuresel olarak geldi", olc("typeof XLSX"), "object");
+onay("JSZip kuresel olarak geldi", olc("typeof JSZip"), "function");
 
 onay("2026 net asgari ucret",
   olc("NetMaas.aylik_net('33030.00', 2026, 1, {kumulatif_matrah: 0}).net.toString()"),
@@ -96,6 +114,48 @@ onay("hesap motoru (teblig ayi + tam ay)", olc(`
   })()`), "6.784,91 + 7.018,87 = 13.803,78");
 
 onay("Turkce ek (unlusuz ad cokmuyor)", olc("Hesap.ek_yonelme('MKS')"), "MKS'e");
+
+// ---------------------------------------------------------------------------
+// Dosya okuma: SheetJS'le .xls uretilip yine SheetJS'le okunuyor. Burada
+// olculen sey xlrd ile birebirlik DEGIL (onu web/kiyas_dokum.js olcuyor),
+// tarayici baglaminda okuma zincirinin ucu uca calistigi.
+// ---------------------------------------------------------------------------
+onay("dokum okuma (tarayici baglaminda .xls)", olc(`
+  (function () {
+    var wb = XLSX.utils.book_new();
+    var sh = XLSX.utils.aoa_to_sheet([
+      ["Sgrt. Kolu", "Adı Soyadı", "İşyeri", "Dönem", "Gün", "PEK"],
+      ["4a", "ORNEK KISI", "900001", "2026/1", "30", "33030.00"],
+      ["4a", "ORNEK KISI", "900001", "2026/2", 30, 33030.00],
+      ["4b", "ORNEK KISI", "", "2026/2", "30", "33030.00"]
+    ]);
+    XLSX.utils.book_append_sheet(wb, sh, "S");
+    var bayt = XLSX.write(wb, {type: "array", bookType: "biff8"});
+    var s = DokumOku.dokum_oku(bayt);
+    return s.kayitlar.length + " kayit, ad=" + s.ad
+      + ", isyeri=" + s.kayitlar[1].isyeri + ", pek=" + s.kayitlar[1].pek
+      + ", uyari=" + (s.uyarilar.length ? "var" : "yok");
+  })()`), "3 kayit, ad=ORNEK KISI, isyeri=900001, pek=33030, uyari=var");
+
+// ---------------------------------------------------------------------------
+// Word ciktisi: JSZip'le uretilen .docx gercekten acilabilir bir zip mi ve
+// govde metni icinde mi. python-docx ile birebirligi web/kiyas_word.js olcuyor.
+// ---------------------------------------------------------------------------
+onay("word uretimi (tarayici baglaminda .docx)", olc(`
+  (function () {
+    var a = Hesap.Ayarlar.kur(${JSON.stringify(AYAR_METIN)});
+    var ay = function (n) {
+      return {kol:"4a", isyeri:"900001", yil:2026, ay:n, gun:30,
+              giris:"", cikis:"", eksik_neden:"", ad:"ORNEK", pek:33030.00};
+    };
+    var s = Hesap.hesapla([ay(1), ay(2)], "900001", {yil:2026,ay:1,gun:1},
+                          {yil:2026,ay:3,gun:28}, 0, a, "ORNEK", "cevap-yok");
+    var p = DisaAktar.word_parcalari(s, {il: "ornekil", daire: "3",
+      dosya_no: "2026/1", isveren_adi: "ORNEK LTD"});
+    return "punto=" + p.punto + ", parca=" + Object.keys(p.parcalar).length
+      + ", govdede tutar=" + (p.parcalar["word/document.xml"]
+          .indexOf("13.803,78") !== -1);
+  })()`), "punto=10.5, parca=5, govdede tutar=true");
 
 console.log("");
 console.log("=".repeat(72));

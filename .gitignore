@@ -38,3 +38,12 @@ dagitim/
 web/kiyas_veri.json
 web/kiyas_hesap_veri.json
 web/kiyas_sentetik.json
+
+# Dokum ve Word kiyaslarinin URETTIGI gecici .xls / .docx dosyalari ve
+# senaryo JSON'lari. Saniyeler icinde yeniden uretiliyorlar. (Sentetikler
+# kisisel veri icermiyor ama depoda durmalarinin da bir anlami yok;
+# kiyas_dokum_veri.json ise --sentetik'siz kosuldugunda GERCEK dokumden
+# uretiliyor, yani kisisel veri icerir.)
+web/kiyas_dokum_veri.json
+web/kiyas_dokum_dosya/
+web/kiyas_word_dosya/
