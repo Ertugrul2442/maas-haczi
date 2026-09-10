@@ -1,0 +1,77 @@
+name: Sayfayı yayınla (GitHub Pages)
+
+# NE YAPAR: web/ klasörünü GitHub Pages'e koyar, yani program bir ADRESTEN
+# açılabilir hâle gelir:  https://ertugrul2442.github.io/maas-haczi/
+#
+# NEDEN: masaüstü sürüm exe olarak flaşla taşınıyor. Web sürümü de flaştan
+# (file://) çalışıyor ama bir adres olması işi kolaylaştırıyor — adliyedeki
+# bilgisayara hiçbir şey kurmadan, kopyalamadan açılıyor.
+#
+# ⚠ KİŞİSEL VERİ AÇISINDAN GÜVENLİ: sayfa herkese açık olur ama SGK dökümü
+# hiçbir yere gitmiyor. Her şey tarayıcının içinde hesaplanıyor, sunucuya tek
+# istek çıkmıyor (index.html'in başındaki mahremiyet notu bunu söylüyor ve
+# doğru). Yayınlanan şey sadece PROGRAM, veri değil.
+#
+# ⚠ NEDEN /docs'a KOPYALAMIYORUZ: GitHub Pages'in klasör seçeneği yalnızca
+# kök ya da /docs kabul ediyor, /web'i kabul etmiyor. Dosyaları /docs'a
+# kopyalamak ikinci bir kopya demek olurdu ve bu projede kopyaların sessizce
+# ayrışması zaten yaşanmış bir tuzak (bkz. web/ayarlar_veri.js ve bekçisi).
+# Actions ile yayınlamak tek kaynağı korur: yayınlanan şey web/ klasörünün
+# kendisi.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Aynı anda tek yayın koşsun; yarıda kesilen bir yayın siteyi bozuk bırakmasın.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  yayinla:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.yayin.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Sayfanın çalışması için ŞART olan dosyalar gerçekten yerinde mi?
+      # Biri eksik giderse sayfa açılır ama hiçbir şey yapmaz (index.html
+      # bunu kırmızı kutuyla söylüyor, yine de yayınlamadan önce bakalım).
+      - name: Gerekli dosyalar yerinde mi
+        run: |
+          eksik=0
+          for f in web/index.html web/ayarlar_veri.js web/yuvarla.js \
+                   web/desimal.js web/net_maas.js web/hesap.js \
+                   web/dokum_oku.js web/disa_aktar.js \
+                   web/lib/xlsx.full.min.js web/lib/jszip.min.js; do
+            if [ ! -f "$f" ]; then echo "EKSİK: $f"; eksik=1; fi
+          done
+          [ "$eksik" = "0" ] || { echo "Eksik dosya var, YAYINLANMADI."; exit 1; }
+          echo "10 dosyanın 10'u yerinde."
+
+      # ayarlar.json ile web kopyası ayrışmışsa yayınlama: tarayıcı sürümü
+      # eski asgari ücretle hesaplamaya devam ederdi ve kimse fark etmezdi.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Ayarlar bekçisi
+        run: node web/ayarlar_uret.js --kontrol
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: yayin
+        uses: actions/deploy-pages@v4
