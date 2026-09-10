@@ -32,6 +32,9 @@ build/
 dagitim/
 *.spec
 
-# Port kiyasinin uretttigi gecici veri (py -3.13 web/kiyas_net_maas.py ile
-# saniyeler icinde yeniden uretilir, 6 MB, depoda durmasi anlamsiz).
+# Port kiyaslarinin urettigi gecici veri. Saniyeler icinde yeniden uretilir,
+# megabaytlarca yer tutar, ve hesap kiyasinin ciktisi GERCEK SGK DOKUMUNDEN
+# uretildigi icin KISISEL VERI icerir -- depoya asla girmemeli.
 web/kiyas_veri.json
+web/kiyas_hesap_veri.json
+web/kiyas_sentetik.json

@@ -148,7 +148,12 @@ def ek_yonelme(ad):
     if k in _KISALTMA:
         return f"{ad}'{_KISALTMA[k][1]}"
     u = _son_unlu(k)
-    ek = "a" if (u in _KALIN_DUZ + _KALIN_YUV) else "e"
+    # u None olabilir: son kelimede hic unlu yoksa (rakam, "MKS" gibi kisaltma)
+    # ya da ad bosken. Eskiden burada "None in str" denip TypeError atiyordu ve
+    # Word ciktisi COKUYORDU -- isveren unvani "GRUP 7" yazmak yetiyordu.
+    # ek_ilgi() ayni durumu zaten ele almis (None -> "in"); buradaki karsiligi
+    # ince/duz "e". 09.09.2026'da JS portu yapilirken bulundu.
+    ek = "a" if (u is not None and u in _KALIN_DUZ + _KALIN_YUV) else "e"
     if k and k[-1] in _UNLULER:
         ek = "y" + ek
     return f"{ad}'{ek}"

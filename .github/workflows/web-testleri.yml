@@ -18,6 +18,7 @@ on:
     paths:
       - "web/**"
       - "net_maas.py"
+      - "hesap.py"
       - ".github/workflows/web-testleri.yml"
   pull_request:
   workflow_dispatch:
@@ -35,6 +36,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+
+      # hesap.py .xls okumak icin xlrd import ediyor; sentetik kiyas dosya
+      # okumasa da import satiri calisiyor.
+      - name: xlrd
+        run: pip install --quiet xlrd
 
       # 1) Yuvarlama: Python'un round(x, 2)'sinin taklidi doğru mu?
       - name: Yuvarlama testi
@@ -63,7 +69,17 @@ jobs:
           python web/kiyas_net_maas.py > web/kiyas_veri.json
           node web/kiyas_net_maas.js web/kiyas_veri.json
 
-      # 6) Dosyalar tarayıcıda da yükleniyor mu? (require/module olmadan)
+      # 6) Hesap motoru: sentetik (kişisel veri içermeyen) dökümler üzerinde
+      #    hesap.py ile hesap.js aynı sonucu mu veriyor? Tutar, uyarı metinleri,
+      #    tutanak paragrafı ve tablo satırları alan alan kıyaslanıyor.
+      #    ⚠ Gerçek SGK dökümüyle koşan kıyas burada YOK: döküm kişisel veri,
+      #    depoda durmuyor. O kıyas yerelde koşuluyor (--sentetik'siz).
+      - name: Hesap motoru Python'a karşı (sentetik dökümler)
+        run: |
+          python web/kiyas_hesap.py --sentetik > web/kiyas_sentetik.json
+          node web/kiyas_hesap.js web/kiyas_sentetik.json
+
+      # 7) Dosyalar tarayıcıda da yükleniyor mu? (require/module olmadan)
       #    "Node'da çalışıyor" ile "tarayıcıda çalışıyor" ayrı sorular.
       - name: Tarayıcı gibi yükleniyor mu
         run: node web/tarayici_kontrol.js
