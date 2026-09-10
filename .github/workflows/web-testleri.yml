@@ -103,6 +103,19 @@ jobs:
       - name: Word çıktısı python-docx'e karşı
         run: python web/kiyas_word.py
 
+      # 8b) Excel çıktısı: openpyxl ile JSZip aynı tabloyu mu üretiyor?
+      #     Hücre hücre — değer, sayı biçimi, kalınlık, punto, DOLGU RENGİ,
+      #     çerçevenin dört kenarı, hiza; ayrıca birleştirmeler, sütun
+      #     genişlikleri ve dondurulmuş bölme.
+      #     ⚠ Renkler burada BİÇİM DEĞİL BİLGİ: mavi = net SGK kazancından
+      #     hesaplandı, turuncu = kazanç asgarinin dışında. SheetJS'in
+      #     ücretsiz sürümü stil YAZAMADIĞI için (ölçüldü) bu dosya JSZip ile
+      #     düz OOXML yazıyor; kıyas onu kilitliyor.
+      - name: Excel çıktısı openpyxl'e karşı
+        run: |
+          pip install --quiet openpyxl
+          python web/kiyas_excel.py
+
       # 9) Dosyalar tarayıcıda da yükleniyor mu? (require/module olmadan)
       #    "Node'da çalışıyor" ile "tarayıcıda çalışıyor" ayrı sorular.
       - name: Tarayıcı gibi yükleniyor mu

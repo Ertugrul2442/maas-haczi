@@ -128,6 +128,28 @@ async function docxParagraflari(yol) {
   return paragraflar;
 }
 
+// Inen .xlsx'in sayfa hucrelerini {ref: metin} olarak dokur.
+// Python tarafi AYNI tanimi kullaniyor (ham XML, openpyxl degil).
+async function xlsxHucreleri(yol) {
+  const JSZip = require(path.join(__dirname, "lib", "jszip.min.js"));
+  const zip = await JSZip.loadAsync(fs.readFileSync(yol));
+  const xml = await zip.file("xl/worksheets/sheet1.xml").async("string");
+  const out = {};
+  const cRe = /<c r="([A-Z]+\d+)"[^>]*?(\/>|>([\s\S]*?)<\/c>)/g;
+  let m;
+  while ((m = cRe.exec(xml)) !== null) {
+    if (m[2] === "/>" || m[3] === undefined) continue;
+    const t = /<t[^>]*>([\s\S]*?)<\/t>/.exec(m[3]);
+    const v = /<v>([\s\S]*?)<\/v>/.exec(m[3]);
+    const ham = t ? t[1] : (v ? v[1] : "");
+    out[m[1]] = ham
+      .split("&lt;").join("<").split("&gt;").join(">")
+      .split("&quot;").join('"').split("&apos;").join("'")
+      .split("&amp;").join("&");
+  }
+  return out;
+}
+
 // Alani temizleyip metni HARF HARF yazar; odagi alanda birakir.
 async function yaz(p, secici, metin) {
   const l = p.locator(secici);
@@ -286,6 +308,35 @@ async function main() {
         // Tek sayfaya sigmadiysa SUSMAK YASAK -- uyari penceresi acilmali.
         esit(d.ad, "sigmadi_uyarisi", gd.ortu_basligi,
           B.word.sigar ? null : "Tek sayfaya sığmadı");
+      }
+
+      // --- Excel: adi ve hucreleri
+      // Bicim/renk burada kiyaslanmiyor (onu web/kiyas_excel.py yapiyor);
+      // buradaki soru arayuzun DOGRU sonucu ve form bilgilerini gecirip
+      // gecirmedigi.
+      if (!B.word.sigar) await p.click(".ortu button");   // ortuyu kapat
+      const xSozu = p.waitForEvent("download", { timeout: 20000 })
+        .catch(() => null);
+      await p.click("#excel_dugme");
+      const xIndirme = await xSozu;
+      esit(d.ad, "excel_indi", xIndirme !== null, true);
+      if (xIndirme) {
+        esit(d.ad, "excel_dosya_adi", xIndirme.suggestedFilename(),
+          B.excel.dosya_adi);
+        const xGecici = path.join(os.tmpdir(),
+          "kiyas_arayuz_" + Date.now() + ".xlsx");
+        await xIndirme.saveAs(xGecici);
+        const hucreler = await xlsxHucreleri(xGecici);
+        fs.unlinkSync(xGecici);
+        const refler = Object.keys(B.excel.hucreler).sort();
+        esit(d.ad, "excel_hucre_sayisi", Object.keys(hucreler).length,
+          refler.length);
+        for (const ref of refler) {
+          esit(d.ad, "excel " + ref, hucreler[ref], B.excel.hucreler[ref]);
+        }
+        const gx = await p.evaluate(OKU);
+        esit(d.ad, "durum_excel", gx.durum,
+          "Excel indirildi: " + B.excel.dosya_adi);
       }
     }
 

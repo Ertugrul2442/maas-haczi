@@ -54,5 +54,8 @@ web/kiyas_word_dosya/
 web/kiyas_arayuz_veri.json
 web/kiyas_arayuz_dosya/
 
+# Excel kiyasinin urettigi gecici .xlsx dosyalari (--tut ile birakiliyor).
+web/kiyas_excel_dosya/
+
 # Mutasyon testinin bozuk sayfa kopyasi (silinmezse kalir).
 web/index_mutasyon.html

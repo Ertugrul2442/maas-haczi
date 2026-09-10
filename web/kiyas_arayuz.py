@@ -32,10 +32,13 @@ Kullanim:
     node web/kiyas_arayuz.js web/kiyas_arayuz_veri.json
 """
 
+import html
 import json
 import os
+import re
 import shutil
 import sys
+import zipfile
 
 sys.stdout.reconfigure(encoding="utf-8")
 KOK = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -282,6 +285,45 @@ def _ui_bilgi(kisi, borclu_bos, form=None):
     return d
 
 
+def _xlsx_hucreleri(yol):
+    """Bir .xlsx'in sayfa XML'indeki hucreleri {ref: metin} olarak dokur.
+
+    HAM XML okunuyor, openpyxl DEGIL: tarayici tarafi da (JS) ayni sekilde
+    ham XML okuyor. Boylece iki taraf ayni tanimi kullaniyor ve sayi
+    yaziminda ("26005.5" mi "26005.499999999996" mi) bir fark varsa
+    goruluyor -- bu fark gercekten yasandi.
+
+    Bicim/renk burada KIYASLANMIYOR; onu web/kiyas_excel.py hucre hucre
+    yapiyor. Buradaki soru farkli: arayuz DOGRU sonucu ve DOGRU form
+    bilgilerini Excel'e gecirmis mi?
+    """
+    with zipfile.ZipFile(yol) as z:
+        xml = z.read("xl/worksheets/sheet1.xml").decode("utf-8")
+    out = {}
+    for m in re.finditer(r'<c r="([A-Z]+\d+)"[^>]*?(/>|>(.*?)</c>)', xml, re.S):
+        ref, kapali, ic = m.group(1), m.group(2), m.group(3)
+        if kapali == "/>" or ic is None:
+            continue
+        t = re.search(r"<t[^>]*>(.*?)</t>", ic, re.S)
+        v = re.search(r"<v>(.*?)</v>", ic, re.S)
+        ham = t.group(1) if t else (v.group(1) if v else "")
+        out[ref] = html.unescape(ham)
+    return out
+
+
+def _excel_beklenen(s, bilgi):
+    """Excel ciktisinin hucreleri + dosya adi."""
+    yol = os.path.join(CIKTI_KLASOR, "_beklenen.xlsx")
+    disa_aktar.excel_yaz(yol, s, bilgi)
+    hucreler = _xlsx_hucreleri(yol)
+    os.remove(yol)
+
+    parcalar = [p for p in (bilgi.get("dosya_no"),
+                            bilgi.get("borclu") or s.kisi) if p]
+    ad = ("_".join(parcalar).replace("/", "-") or "tensip") + "_hesap.xlsx"
+    return {"hucreler": hucreler, "dosya_adi": ad}
+
+
 def _word_beklenen(s, bilgi):
     """Word ciktisinin metni + dosya adi + durum cubugu cumlesi.
 
@@ -352,6 +394,8 @@ def senaryo(ad, dosya, teblig, karar, borc, kusur, isyeri, kisisel,
         beklenen["uyarilar"] = _uyari_satirlari(s, okuma_uyarilari,
                                                 len(isverenler))
         beklenen["word"] = _word_beklenen(
+            s, _ui_bilgi(kisi, borclu_bos, form))
+        beklenen["excel"] = _excel_beklenen(
             s, _ui_bilgi(kisi, borclu_bos, form))
 
     return {

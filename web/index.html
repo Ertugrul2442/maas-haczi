@@ -333,6 +333,7 @@
   <div class="dugmeler">
     <button type="button" id="kopyala_dugme">Metni kopyala</button>
     <button type="button" id="word_dugme">Word’e aktar</button>
+    <button type="button" id="excel_dugme">Excel’e aktar</button>
     <label class="kutucuk">
       <input type="checkbox" id="ek_kutusu">
       Word’e hesap dökümü ekini de koy (2. sayfa)
@@ -814,6 +815,17 @@
     }).catch(function (e) { hataGoster("Word yazılamadı", e); });
   }
 
+  function exceleAktar() {
+    if (!S.sonuc) { uyariPenceresi("Önce hesapla", "Henüz bir hesap yok."); return; }
+    // Masaustundeki adlandirmanin aynisi: tutanak "_tensip", tablo "_hesap".
+    var ad = adParca().replace("_tensip", "_hesap") + ".xlsx";
+    durum("Excel hazırlanıyor…");
+    DisaAktar.excel_uret(S.sonuc, bilgiSozlugu(), "blob").then(function (r) {
+      indir(r.veri, ad);
+      durum("Excel indirildi: " + ad);
+    }).catch(function (e) { hataGoster("Excel yazılamadı", e); });
+  }
+
   function metniKopyala() {
     if (!S.sonuc) { uyariPenceresi("Önce hesapla", "Henüz bir hesap yok."); return; }
     var metin = E("tutanak_metni").textContent;
@@ -895,6 +907,7 @@
     E("hesapla_dugme").onclick = hesapla;
     E("kopyala_dugme").onclick = metniKopyala;
     E("word_dugme").onclick = wordeAktar;
+    E("excel_dugme").onclick = exceleAktar;
     E("ayarlar_dugme").onclick = ayarlariGoster;
 
     var dugmeler = document.querySelectorAll(".sekmeler button");
