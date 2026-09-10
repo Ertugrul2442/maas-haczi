@@ -22,8 +22,13 @@ const path = require("path");
 // bizim dosyalarimiz. Kutuphaneler kendi kuresel adlarini birakiyor; asagida
 // "biz ne biraktik" olculurken onlar disarida tutuluyor.
 const KUTUPHANELER = ["lib/xlsx.full.min.js", "lib/jszip.min.js"];
-const DOSYALAR = ["desimal.js", "yuvarla.js", "net_maas.js", "hesap.js",
-  "dokum_oku.js", "disa_aktar.js"];
+// ayarlar_veri.js index.html'in <script src> ile yukledigi URETILEN dosya:
+// "file://" altinda ayarlar.json fetch EDILEMEDIGI icin (olculdu) ayarlarin
+// gomulu kopyasi. Burada olculen sey icerigin dogrulugu DEGIL (onu
+// "node web/ayarlar_uret.js --kontrol" olcuyor), bos bir baglamda
+// yuklenebiliyor mu ve dogru kuresel adi birakiyor mu.
+const DOSYALAR = ["ayarlar_veri.js", "desimal.js", "yuvarla.js", "net_maas.js",
+  "hesap.js", "dokum_oku.js", "disa_aktar.js"];
 const klasor = __dirname;
 
 let gecen = 0;
@@ -79,7 +84,12 @@ const bizimkiler = Object.keys(baglam)
   .filter((a) => a !== "console" && KUTUPHANE_ADLARI.indexOf(a) === -1)
   .sort().join(",");
 onay("birakilan kuresel adlar (kutuphaneler haric)", bizimkiler,
-  "Desimal,DisaAktar,DokumOku,Hesap,NetMaas,Yuvarla");
+  "AYARLAR_VERI,Desimal,DisaAktar,DokumOku,Hesap,NetMaas,Yuvarla");
+
+// Sayfanin acilista yaptigi seyin aynisi: gomulu ayarlari Ayarlar'a cevir.
+// Bu zincir kirilirsa sayfa acilir ama hicbir hesap yapamaz.
+onay("gomulu ayarlar Ayarlar'a cevriliyor",
+  olc("Hesap.tl(Hesap.Ayarlar.kur(AYARLAR_VERI).son_donem().yil)"), "2.026,00");
 
 onay("SheetJS kuresel olarak geldi", olc("typeof XLSX"), "object");
 onay("JSZip kuresel olarak geldi", olc("typeof JSZip"), "function");

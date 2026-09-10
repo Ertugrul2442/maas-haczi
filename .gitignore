@@ -47,3 +47,12 @@ web/kiyas_sentetik.json
 web/kiyas_dokum_veri.json
 web/kiyas_dokum_dosya/
 web/kiyas_word_dosya/
+
+# Arayuz kiyasinin urettikleri. kiyas_arayuz_veri.json --sentetik'siz
+# kosuldugunda GERCEK dokumden uretiliyor ve icinde borclu adi, tutanak
+# metni, hatta Word paragraflari var -- yani KISISEL VERI.
+web/kiyas_arayuz_veri.json
+web/kiyas_arayuz_dosya/
+
+# Mutasyon testinin bozuk sayfa kopyasi (silinmezse kalir).
+web/index_mutasyon.html

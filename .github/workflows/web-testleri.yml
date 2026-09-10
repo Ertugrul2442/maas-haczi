@@ -107,3 +107,37 @@ jobs:
       #    "Node'da çalışıyor" ile "tarayıcıda çalışıyor" ayrı sorular.
       - name: Tarayıcı gibi yükleniyor mu
         run: node web/tarayici_kontrol.js
+
+      # 10) ayarlar.json ile onun WEB KOPYASI (web/ayarlar_veri.js) aynı mı?
+      #     Web sürümü ayarları fetch edemiyor — "file://" altında tarayıcı
+      #     hem fetch'i hem XHR'ı engelliyor (10.09.2026'da Chromium ile
+      #     ölçüldü). O yüzden ayarların gömülü bir kopyası var. İki kopya
+      #     demek sessizce ayrışabilir demek: yeni asgari ücret ayarlar.json'a
+      #     girer, tarayıcı sürümü ESKİ rakamla hesaplamaya devam eder ve
+      #     kimse fark etmez. Bu adım tam da onu kırmızı yakıyor.
+      - name: Asgari ücret tablosu web kopyasıyla aynı mı
+        run: node web/ayarlar_uret.js --kontrol
+
+      # 11) ARAYÜZ: sayfa gerçek bir tarayıcıda, gerçekten "file://" ile
+      #     açılıp masaüstü arayüzle AYNI şeyi mi gösteriyor?
+      #
+      #     Motor kıyasları (5-8) "aynı girdiye aynı sayı" diyor; bu ise
+      #     "motor doğru bağlanmış mı" diyor. Yanlış sırayla parametre
+      #     geçmek, satırı yanlış renge boyamak, uyarıyı hiç yazmamak —
+      #     hiçbirini motor kıyası yakalamaz. Bu projede tam bu sınıfta üç
+      #     hata yaşandı ve üçü de ancak çıktı GÖZLE okunarak bulundu.
+      #
+      #     Kıyas ekranın yanı sıra inen .docx'in İÇİNİ de okuyor: "bir dosya
+      #     indi" ile "doğru dosya indi" ayrı sorular.
+      #
+      #     ⚠ file:// bilerek: program adliyede flaştan da açılabilmeli.
+      #     Sunucudan servis edilseydi kıyas yeşil yanar, flaşta açılmazdı.
+      - name: Playwright + Chromium kur
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Arayüz masaüstüne karşı (sentetik dökümler)
+        run: |
+          python web/kiyas_arayuz.py --sentetik > web/kiyas_arayuz_veri.json
+          node web/kiyas_arayuz.js web/kiyas_arayuz_veri.json

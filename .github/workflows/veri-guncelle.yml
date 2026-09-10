@@ -33,6 +33,11 @@ jobs:
         with:
           python-version: "3.13"
 
+      # web/ayarlar_uret.js icin
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: PDF okuyucu
         run: pip install --quiet pymupdf
 
@@ -77,12 +82,25 @@ jobs:
           assert brut and brut > net, "brut/net tutarsiz"
           PY
 
+      # ayarlar.json'un web kopyasini TAZELE.
+      # Web surumu ayarlari fetch EDEMIYOR ("file://" altinda tarayici
+      # engelliyor, olculdu), o yuzden ayarlar.json'un gomulu bir kopyasi
+      # var: web/ayarlar_veri.js. Burada uretilmezse yeni asgari ucret
+      # masaustune girer ama TARAYICI SURUMU ESKI RAKAMLA HESAPLAMAYA
+      # DEVAM EDER -- tam da bu projenin en pahali hata sinifi. Ayrica
+      # web-testleri.yml bu ayrismayi zaten kirmizi yakiyor.
+      - name: Ayarların web kopyasını üret
+        if: steps.cek.outputs.yeni == 'evet'
+        run: |
+          node web/ayarlar_uret.js
+          node web/ayarlar_uret.js --kontrol
+
       - name: İşle ve gönder
         if: steps.cek.outputs.yeni == 'evet'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ayarlar.json
+          git add ayarlar.json web/ayarlar_veri.js
           if git diff --cached --quiet; then
             echo "::warning::veri_cek.py yeni veri dedi ama dosyada fark yok - beklenmedik"
             exit 0

@@ -1,0 +1,944 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maaş Haczi — İşveren Sorumluluk Hesabı (İİK 355-356)</title>
+<!--
+  Masaustu surumun (arayuz.py) tarayici karsiligi.
+
+  UC TASARIM KARARI, UCU DE OLCUMDEN GELIYOR:
+
+  1) ES modul (import/export) YOK, klasik <script src> var. "file://" ile
+     acilan sayfada tarayici ES modulu engelliyor; bu program adliyede
+     flastan da acilabilmeli.
+
+  2) ayarlar.json FETCH EDILMIYOR, ayarlar_veri.js olarak gomuluyor.
+     10.09.2026'da olculdu: file:// altinda fetch de XHR de basarisiz
+     ("Failed to fetch"). Iki kopyanin ayrisma riski CI'da olculuyor:
+     node web/ayarlar_uret.js --kontrol
+
+  3) Kutuphaneler lib/ altinda YEREL. Adliye agi CDN'i engelleyebilir.
+
+  Dosya okuma FileReader ile, Word indirme blob + <a download> ile yapiliyor;
+  ikisi de file:// altinda olculdu ve calisiyor.
+-->
+<style>
+  :root {
+    color-scheme: light;          /* tarayici formlari zorla karartmasin */
+    --zemin: #f3f4f6;
+    --kart: #ffffff;
+    --cizgi: #d4d7dd;
+    --yazi: #1b1e23;
+    --soluk: #5f6672;
+    --vurgu: #1f5aa6;
+    --vurgu-koyu: #17457e;
+    --teyitli: #eef6ec;
+    --pekten: #e4eefb;
+    --dikkat: #ffe9d6;
+    --sonuc: #e8f0d8;
+    --kirmizi: #b3261e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0 16px 96px;
+    background: var(--zemin);
+    color: var(--yazi);
+    font: 15px/1.45 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  }
+  .sayfa { max-width: 1140px; margin: 0 auto; }
+
+  header { padding: 18px 0 10px; }
+  header h1 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.2px; }
+  header p { margin: 4px 0 0; color: var(--soluk); font-size: 13px; }
+
+  .mahremiyet {
+    margin: 10px 0 14px; padding: 9px 12px; border-radius: 6px;
+    background: #eaf3ea; border: 1px solid #bcd6bc; color: #244d24; font-size: 13px;
+  }
+  .mahremiyet b { font-weight: 650; }
+
+  .kart {
+    background: var(--kart); border: 1px solid var(--cizgi);
+    border-radius: 8px; padding: 14px 16px 16px; margin-bottom: 14px;
+  }
+  .kart > h2 {
+    margin: 0 0 12px; font-size: 14px; font-weight: 650; color: var(--soluk);
+    text-transform: uppercase; letter-spacing: 0.4px;
+  }
+
+  .satir { display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: flex-end; }
+  .alan { display: flex; flex-direction: column; gap: 4px; }
+  .alan.genis { flex: 1 1 260px; min-width: 200px; }
+  label { font-size: 13px; color: var(--soluk); }
+  input[type=text], select {
+    font: inherit; padding: 6px 8px; border: 1px solid var(--cizgi);
+    border-radius: 5px; background: #fff; color: var(--yazi); min-width: 0;
+  }
+  input[type=text]:focus, select:focus {
+    outline: 2px solid #a9c6ea; outline-offset: -1px; border-color: var(--vurgu);
+  }
+  .dar { width: 130px; }
+  .ipucu { font-size: 12px; color: var(--soluk); margin: 8px 0 0; }
+
+  /* --- dosya secme + surukleme ------------------------------------------ */
+  .dosya {
+    border: 1.5px dashed #b6bcc6; border-radius: 7px; padding: 12px 14px;
+    background: #fbfcfd; display: flex; align-items: center; gap: 12px;
+    flex-wrap: wrap;
+  }
+  .dosya.uzerinde { border-color: var(--vurgu); background: #eef4fc; }
+  .dosya .ad { font-size: 13px; color: var(--soluk); }
+  .dosya .ad.dolu { color: var(--yazi); font-weight: 600; }
+
+  button {
+    font: inherit; padding: 7px 14px; border-radius: 5px; cursor: pointer;
+    border: 1px solid var(--cizgi); background: #fff; color: var(--yazi);
+  }
+  button:hover { background: #f0f2f5; }
+  button.ana {
+    background: var(--vurgu); border-color: var(--vurgu); color: #fff;
+    font-weight: 600; padding: 9px 18px;
+  }
+  button.ana:hover { background: var(--vurgu-koyu); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  #hesapla_dugme { width: 100%; margin-top: 14px; font-size: 16px; padding: 11px; }
+
+  /* --- 2. bolum: tutanak bilgileri -------------------------------------- */
+  .izgara {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 18px;
+  }
+  @media (max-width: 780px) { .izgara { grid-template-columns: 1fr; } }
+  .dosyano { display: flex; align-items: center; gap: 6px; }
+  .dosyano input { text-align: center; }
+  .dosyano .yil { width: 74px; }
+  .dosyano .sira { flex: 1; text-align: left; }
+  .dosyano .egik { font-weight: 700; color: var(--soluk); }
+
+  /* --- sekmeler ---------------------------------------------------------- */
+  .sekmeler { display: flex; gap: 4px; border-bottom: 1px solid var(--cizgi); }
+  .sekmeler button {
+    border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0;
+    background: transparent; color: var(--soluk); padding: 8px 16px; margin-bottom: -1px;
+  }
+  .sekmeler button.secili {
+    background: var(--kart); border-color: var(--cizgi); color: var(--yazi);
+    font-weight: 600;
+  }
+  .sekme_govde {
+    background: var(--kart); border: 1px solid var(--cizgi); border-top: none;
+    border-radius: 0 0 8px 8px; padding: 4px;
+  }
+  .kaydir { max-height: 460px; overflow: auto; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  /* Dar ekranda sutunlar sikisinca aciklama metni sariyor ve satirlar
+     gereksiz yukseliyor (olculdu, 420px'te bir satir ~90px oluyordu).
+     Tablo zaten yatay kaydirilabilir bir kutunun icinde; alt genislik
+     verilince satirlar tek satir kaliyor, kullanici yana kaydiriyor. */
+  #s_tablo table { min-width: 880px; }
+  th, td { padding: 6px 9px; border-bottom: 1px solid #e8eaee; text-align: left; }
+  th {
+    position: sticky; top: 0; background: #eef0f3; font-weight: 600;
+    font-size: 12.5px; color: #333; border-bottom: 1px solid var(--cizgi);
+    white-space: nowrap; z-index: 1;
+  }
+  td.sayi, th.sayi { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.teyitli { background: var(--teyitli); }
+  tr.pekten  { background: var(--pekten); }
+  tr.dikkat  { background: var(--dikkat); }
+  tr.bosluk td { padding: 5px; border: none; }
+  tr.toplam td { font-weight: 700; border-top: 1px solid #b8bcc4; }
+  tr.sonuc td { font-weight: 700; background: var(--sonuc); font-size: 14.5px; }
+
+  #tutanak_metni, #uyari_kutusu {
+    white-space: pre-wrap; word-wrap: break-word; margin: 0; padding: 12px 14px;
+  }
+  #tutanak_metni { font: 15px/1.6 "Segoe UI", system-ui, sans-serif; }
+  #uyari_kutusu { font: 13px/1.55 Consolas, "Courier New", monospace; }
+  #uyari_kutusu .kotu { color: var(--kirmizi); font-weight: 600; }
+
+  .dugmeler { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+  .dugmeler .sag { margin-left: auto; }
+  .kutucuk { display: flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--soluk); }
+
+  /* --- durum cubugu ------------------------------------------------------ */
+  #durum {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    background: #262a31; color: #eef0f3; font-size: 13px;
+    padding: 9px 18px; border-top: 1px solid #000;
+  }
+  #durum .sayfa { display: flex; gap: 10px; align-items: baseline; }
+  #durum b { color: #9fc2ee; font-weight: 600; white-space: nowrap; }
+  #durum.hata { background: #6d1a15; }
+  #durum.hata b { color: #ffb4ad; }
+
+  /* --- ortu (asgari ucret tablosu / uyari) ------------------------------- */
+  .ortu {
+    position: fixed; inset: 0; background: rgba(20, 22, 26, 0.5); z-index: 40;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .ortu > div {
+    background: #fff; border-radius: 9px; padding: 20px 22px; max-width: 640px;
+    width: 100%; max-height: 82vh; overflow: auto;
+  }
+  .ortu h3 { margin: 0 0 10px; font-size: 17px; }
+
+  .yok { display: none !important; }
+
+  #kurulum_hatasi {
+    background: #fdecea; border: 1px solid #f0b4ae; color: #7a1c14;
+    padding: 14px 16px; border-radius: 8px; margin: 14px 0;
+  }
+  #kurulum_hatasi ul { margin: 8px 0 0 18px; }
+</style>
+</head>
+<body>
+<div class="sayfa">
+
+  <header>
+    <h1>Maaş Haczi — İşveren Sorumluluk Hesabı</h1>
+    <p>İİK 355-356 · maaş haciz müzekkeresine uymayan işverenin kesmesi gerekip
+       kesmediği tutar</p>
+  </header>
+
+  <div class="mahremiyet">
+    <b>Dosya bu bilgisayardan çıkmıyor.</b> SGK hizmet dökümü hiçbir yere
+    yüklenmiyor, hiçbir sunucuya gönderilmiyor. Hesap tamamen tarayıcının
+    içinde yapılıyor; sayfayı kapattığında geriye hiçbir şey kalmıyor.
+    (İnternet bağlantısı olmadan da çalışır.)
+  </div>
+
+  <div id="kurulum_hatasi" class="yok"></div>
+
+  <!-- ================= 1. BILGILER ================= -->
+  <div class="kart">
+    <h2>1 · Bilgileri gir</h2>
+
+    <div class="dosya" id="birak_alani">
+      <button type="button" id="dosya_dugme">SGK hizmet dökümünü seç…</button>
+      <input type="file" id="dosya_girdi" accept=".xls,.xlsx" class="yok">
+      <span class="ad" id="dosya_adi">Dosya seçilmedi — buraya sürükleyip
+        bırakabilirsin de (.xls / .xlsx)</span>
+    </div>
+
+    <div class="satir" style="margin-top:14px">
+      <div class="alan">
+        <label for="teblig">Müzekkere tebliğ tarihi</label>
+        <input type="text" id="teblig" class="dar" placeholder="25.11.2025" autocomplete="off">
+      </div>
+      <div class="alan">
+        <label for="karar">Karar (tespit) tarihi</label>
+        <input type="text" id="karar" class="dar" autocomplete="off">
+      </div>
+      <div class="alan">
+        <label for="borc">Dosya borcu (TL)</label>
+        <input type="text" id="borc" class="dar" placeholder="33.121,92" autocomplete="off">
+      </div>
+      <div class="alan genis">
+        <label for="kusur">İşverenin kusuru</label>
+        <select id="kusur">
+          <option value="cevap-yok">Müzekkereye cevap vermedi</option>
+          <option value="kesinti-yok">Cevap verdi, kesinti yapmadı</option>
+        </select>
+      </div>
+    </div>
+
+    <p class="ipucu">
+      Maaş sorulmuyor — her ayın ücreti SGK hizmet dökümündeki kazanç (PEK)
+      sütunundan okunuyor  ·  Dosya borcu boşsa üst sınır uygulanmaz  ·
+      İşverenin kusuru sadece tutanak cümlesini değiştirir, hesabı değiştirmez
+    </p>
+
+    <div class="satir" style="margin-top:6px">
+      <div class="alan genis">
+        <label for="isveren">İşveren (işyeri sicil no)</label>
+        <select id="isveren"></select>
+      </div>
+      <div class="alan" style="padding-bottom:7px">
+        <span class="ipucu" style="margin:0">* = tebliğ ayında kaydı var</span>
+      </div>
+    </div>
+
+    <button type="button" class="ana" id="hesapla_dugme">HESAPLA</button>
+  </div>
+
+  <!-- ================= 2. TUTANAK BILGILERI ================= -->
+  <div class="kart">
+    <h2>2 · Tutanak bilgileri (Word çıktısı için, isteğe bağlı)</h2>
+    <div class="izgara">
+      <div class="alan"><label for="b_il">İl</label>
+        <input type="text" id="b_il" autocomplete="off"></div>
+      <div class="alan"><label for="b_daire">İcra dairesi</label>
+        <input type="text" id="b_daire" autocomplete="off"></div>
+      <div class="alan"><label for="b_dosya_yil">Dosya no</label>
+        <div class="dosyano">
+          <input type="text" id="b_dosya_yil" class="yil" placeholder="2025"
+                 inputmode="numeric" autocomplete="off">
+          <span class="egik">/</span>
+          <input type="text" id="b_dosya_sira" class="sira" placeholder="10000"
+                 autocomplete="off">
+        </div></div>
+      <div class="alan"><label for="b_borclu">Borçlu adı</label>
+        <input type="text" id="b_borclu" autocomplete="off"></div>
+      <div class="alan"><label for="b_isveren_adi">İşveren unvanı</label>
+        <input type="text" id="b_isveren_adi" autocomplete="off"></div>
+      <div class="alan"><label for="b_personel">İşlemi yapacak personel</label>
+        <input type="text" id="b_personel" autocomplete="off"></div>
+      <div class="alan"><label for="b_imza_ad">İmza — ad</label>
+        <input type="text" id="b_imza_ad" autocomplete="off"></div>
+      <div class="alan"><label for="b_imza_unvan">İmza — unvan</label>
+        <input type="text" id="b_imza_unvan" autocomplete="off"></div>
+      <div class="alan"><label for="b_imza_sicil">İmza — sicil</label>
+        <input type="text" id="b_imza_sicil" autocomplete="off"></div>
+    </div>
+    <p class="ipucu">
+      Word’e giderken: İl ve daire BÜYÜK harfe çevrilir  ·  İcra dairesine
+      sadece “3” yazman yeter → “3. İCRA DAİRESİ”  ·  ad “Ahmet YILMAZ” olur
+      (son kelime = soyad)
+    </p>
+  </div>
+
+  <!-- ================= SONUC ================= -->
+  <div class="sekmeler">
+    <button type="button" class="secili" data-sekme="s_tablo">Tablo</button>
+    <button type="button" data-sekme="s_metin">Tutanak metni</button>
+    <button type="button" data-sekme="s_uyari">Uyarılar</button>
+  </div>
+  <div class="sekme_govde">
+    <div id="s_tablo" class="kaydir">
+      <table>
+        <thead><tr>
+          <th>Ay</th>
+          <th class="sayi">Gün</th>
+          <th class="sayi">SGK kazancı (aylık brüt)</th>
+          <th class="sayi">Esas alınan net maaş</th>
+          <th class="sayi">1/4</th>
+          <th class="sayi">Tutar (TL)</th>
+          <th>Açıklama</th>
+        </tr></thead>
+        <tbody id="tablo_govde">
+          <tr><td colspan="7" style="color:#5f6672;padding:16px">
+            Henüz hesap yok — dökümü seç, tarihleri gir, HESAPLA’ya bas.
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="s_metin" class="kaydir yok"><div id="tutanak_metni">—</div></div>
+    <div id="s_uyari" class="kaydir yok"><div id="uyari_kutusu">—</div></div>
+  </div>
+
+  <div class="dugmeler">
+    <button type="button" id="kopyala_dugme">Metni kopyala</button>
+    <button type="button" id="word_dugme">Word’e aktar</button>
+    <label class="kutucuk">
+      <input type="checkbox" id="ek_kutusu">
+      Word’e hesap dökümü ekini de koy (2. sayfa)
+    </label>
+    <button type="button" class="sag" id="ayarlar_dugme">Asgari ücret tablosu</button>
+  </div>
+
+</div><!-- /sayfa -->
+
+<div id="durum"><div class="sayfa"><b>Durum:</b><span id="durum_metni">Yükleniyor…</span></div></div>
+
+<!-- Kutuphaneler YEREL (adliye agi CDN'i engelleyebilir) -->
+<script src="lib/xlsx.full.min.js"></script>
+<script src="lib/jszip.min.js"></script>
+<!-- ayarlar.json'un gomulu kopyasi: file:// altinda fetch calismiyor -->
+<script src="ayarlar_veri.js"></script>
+<!-- Hesap zinciri: sira onemli (net_maas -> desimal, hesap -> yuvarla+net_maas) -->
+<script src="desimal.js"></script>
+<script src="yuvarla.js"></script>
+<script src="net_maas.js"></script>
+<script src="hesap.js"></script>
+<script src="dokum_oku.js"></script>
+<script src="disa_aktar.js"></script>
+
+<script>
+"use strict";
+(function () {
+
+  // ----------------------------------------------------------------- durum
+  var S = {
+    kayitlar: [],
+    kisi: "",
+    okuma_uyarilari: [],
+    isverenler: [],
+    sonuc: null,
+    ayarlar: null,
+    dosya_adi: "",
+  };
+
+  function E(id) { return document.getElementById(id); }
+
+  function durum(metin, hata) {
+    E("durum_metni").textContent = metin;
+    E("durum").className = hata ? "hata" : "";
+  }
+
+  function hataGoster(baslik, e) {
+    var m = (e && e.message) ? e.message : String(e);
+    durum(baslik + ": " + m, true);
+    uyariPenceresi(baslik, m);
+  }
+
+  // ------------------------------------------------- yukleme kontrolu
+  // SESSIZ BASARISIZLIK YASAK: bir <script src> yuklenmezse sayfa acilir ama
+  // hicbir sey calismaz. Once bunu yuksek sesle soyle.
+  var GEREKENLER = [
+    ["XLSX", "lib/xlsx.full.min.js"], ["JSZip", "lib/jszip.min.js"],
+    ["AYARLAR_VERI", "ayarlar_veri.js"], ["Desimal", "desimal.js"],
+    ["Yuvarla", "yuvarla.js"], ["NetMaas", "net_maas.js"],
+    ["Hesap", "hesap.js"], ["DokumOku", "dokum_oku.js"],
+    ["DisaAktar", "disa_aktar.js"]
+  ];
+
+  function yuklemeyiKontrolEt() {
+    var eksik = [];
+    for (var i = 0; i < GEREKENLER.length; i++) {
+      if (typeof window[GEREKENLER[i][0]] === "undefined") eksik.push(GEREKENLER[i][1]);
+    }
+    if (!eksik.length) return true;
+    var k = E("kurulum_hatasi");
+    k.className = "";
+    k.innerHTML = "<b>Program eksik yüklendi — hesap yapılamaz.</b>" +
+      "<div>Aşağıdaki dosyalar bu sayfanın yanında bulunamadı. " +
+      "Klasörün tamamını (lib/ dahil) kopyaladığından emin ol.</div><ul></ul>";
+    var ul = k.querySelector("ul");
+    eksik.forEach(function (ad) {
+      var li = document.createElement("li");
+      li.textContent = ad;
+      ul.appendChild(li);
+    });
+    durum("Eksik dosya: " + eksik.join(", "), true);
+    return false;
+  }
+
+  // ------------------------------------------------------------ ortu/pencere
+  function ortuKapat() {
+    var o = document.querySelector(".ortu");
+    if (o) o.remove();
+  }
+
+  function ortuAc(baslik, govdeKur) {
+    ortuKapat();
+    var ortu = document.createElement("div");
+    ortu.className = "ortu";
+    var ic = document.createElement("div");
+    var h = document.createElement("h3");
+    h.textContent = baslik;
+    ic.appendChild(h);
+    govdeKur(ic);
+    var kapat = document.createElement("button");
+    kapat.textContent = "Kapat";
+    kapat.style.marginTop = "14px";
+    kapat.onclick = ortuKapat;
+    ic.appendChild(kapat);
+    ortu.appendChild(ic);
+    ortu.addEventListener("click", function (ev) { if (ev.target === ortu) ortuKapat(); });
+    document.body.appendChild(ortu);
+    kapat.focus();
+  }
+
+  function uyariPenceresi(baslik, metin) {
+    ortuAc(baslik, function (ic) {
+      var p = document.createElement("p");
+      p.style.whiteSpace = "pre-wrap";
+      p.textContent = metin;
+      ic.appendChild(p);
+    });
+  }
+
+  // ----------------------------------------------------------------- ayarlar
+  function ayarlariYukle() {
+    try {
+      S.ayarlar = Hesap.Ayarlar.kur(AYARLAR_VERI);
+      var son = S.ayarlar.donemler[S.ayarlar.donemler.length - 1];
+      durum("Asgari ücret tablosu yüklendi — en son dönem " +
+        (son.ay < 10 ? "0" : "") + son.ay + "/" + son.yil +
+        ", net " + Hesap.tl(son.net) + " TL, 1/4 = " + Hesap.tl(son.ceyrek) +
+        " TL.  SGK hizmet dökümünü seçerek başla.");
+    } catch (e) {
+      hataGoster("Asgari ücret tablosu okunamadı", e);
+    }
+  }
+
+  function ayarlariGoster() {
+    ortuAc("Asgari ücret tablosu (ayarlar.json)", function (ic) {
+      var t = document.createElement("table");
+      t.innerHTML = "<thead><tr><th>Dönem başlangıcı</th>" +
+        "<th class='sayi'>Net asgari ücret</th><th class='sayi'>1/4</th>" +
+        "<th class='sayi'>Brüt</th></tr></thead>";
+      var tb = document.createElement("tbody");
+      S.ayarlar.donemler.forEach(function (d) {
+        var tr = document.createElement("tr");
+        [(d.ay < 10 ? "0" : "") + d.ay + "/" + d.yil,
+         Hesap.tl(d.net), Hesap.tl(d.ceyrek),
+         d.brut === null ? "—" : Hesap.tl(d.brut)].forEach(function (v, i) {
+          var td = document.createElement("td");
+          td.textContent = v;
+          if (i > 0) td.className = "sayi";
+          tr.appendChild(td);
+        });
+        tb.appendChild(tr);
+      });
+      t.appendChild(tb);
+      ic.appendChild(t);
+      var p = document.createElement("p");
+      p.className = "ipucu";
+      p.textContent = "Yeni yılın asgari ücreti açıklandığında bu tablo " +
+        "güncellenmeli. Kaynak dosya: depo kökündeki ayarlar.json. Oraya yeni " +
+        "dönemi ekledikten sonra  node web/ayarlar_uret.js  komutu " +
+        "çalıştırılır (bu sayfanın okuduğu ayarlar_veri.js böyle üretiliyor). " +
+        "Tablo eskiyse hesap sessizce düşük çıkmaz — Uyarılar sekmesinin en " +
+        "başında bağırır.";
+      ic.appendChild(p);
+    });
+  }
+
+  // ------------------------------------------------------------- dosya okuma
+  function dosyaSecildi(dosya) {
+    if (!dosya) return;
+    S.dosya_adi = dosya.name;
+    E("dosya_adi").textContent = dosya.name;
+    E("dosya_adi").className = "ad dolu";
+    durum("Dosya okunuyor: " + dosya.name + " …");
+
+    var okuyucu = new FileReader();
+    okuyucu.onerror = function () {
+      S.kayitlar = [];
+      hataGoster("Dosya okunamadı", new Error("Tarayıcı dosyayı açamadı."));
+    };
+    okuyucu.onload = function (ev) {
+      try {
+        var sonuc = DokumOku.dokum_oku(new Uint8Array(ev.target.result));
+        S.kayitlar = sonuc.kayitlar;
+        S.kisi = sonuc.ad;
+        S.okuma_uyarilari = sonuc.uyarilar;
+      } catch (e) {
+        S.kayitlar = [];
+        S.kisi = "";
+        S.okuma_uyarilari = [];
+        isverenleriYaz([]);
+        hataGoster("Dosya okunamadı", e);
+        return;
+      }
+      if (S.kisi && !E("b_borclu").value.trim()) E("b_borclu").value = S.kisi;
+      durum(S.kayitlar.length + " hizmet kaydı okundu" +
+        (S.kisi ? " — " + S.kisi : "") + "  (" + dosya.name + ")");
+      isverenleriYenile();
+    };
+    okuyucu.readAsArrayBuffer(dosya);
+  }
+
+  // ------------------------------------------------------- isveren listesi
+  function isverenleriYaz(etiketler) {
+    var sec = E("isveren");
+    var onceki = sec.value;
+    sec.innerHTML = "";
+    etiketler.forEach(function (et) {
+      var o = document.createElement("option");
+      o.value = et;
+      o.textContent = et;
+      sec.appendChild(o);
+    });
+    if (etiketler.indexOf(onceki) >= 0) sec.value = onceki;
+  }
+
+  // SESSIZ KALMAK YASAK. Masaustu surumde yasanmisti: teblig tarihi bos
+  // oldugu surece bu is hicbir sey demeden geri donuyordu; liste bos
+  // kaliyor, durum cubugu "85 kayit okundu" diyerek her sey yolundaymis
+  // gibi gorunuyordu. Tarih yoksa BUTUN isverenler listelenir ve neyin
+  // eksik oldugu yazilir.
+  function isverenleriYenile() {
+    if (!S.kayitlar.length) {
+      isverenleriYaz([]);
+      durum("Önce SGK hizmet dökümünü seç.");
+      return;
+    }
+    var eksik = [];
+    var teblig = null, karar = null;
+    try { teblig = Hesap.tarih_coz(E("teblig").value); }
+    catch (e) { eksik.push("tebliğ tarihi"); }
+    try { karar = Hesap.tarih_coz(E("karar").value); }
+    catch (e) { eksik.push("karar tarihi"); }
+
+    S.isverenler = Hesap.isverenleri_listele(S.kayitlar, teblig, karar);
+    var etiketler = S.isverenler.map(Hesap.isveren_etiket);
+    isverenleriYaz(etiketler);
+
+    if (!etiketler.length) {
+      // YANLIS FAIL GOSTERME: dokumde hic 4a olmayabilir (memur/Bagkur
+      // dosyasi). Eskiden hep "bu tarih araliginda kayit yok" deniyordu,
+      // kullanici tarihle ugrasip duruyordu.
+      var ozet = Hesap.kol_ozeti(S.kayitlar);
+      if (!ozet["4a"]) {
+        var disi = Object.keys(ozet).sort().map(function (k) {
+          return (Hesap.KOL_ADI[k] || k) + ": " + ozet[k];
+        }).join(", ");
+        durum("Dökümde hiç 4a (işçi) kaydı YOK — " + disi + ". Bu program " +
+          "sadece 4a hesaplar; memur/kamu dosyasında maaş bilgisi kurumdan " +
+          "(bordro) istenmeli. Ayrıntı: Uyarılar sekmesi.", true);
+        uyarilariYaz(S.okuma_uyarilari.map(function (u) { return "[dosya okuma] " + u; }));
+      } else {
+        durum("Bu tarih aralığında hiç 4a işveren kaydı yok — tebliğ/karar " +
+          "tarihini kontrol et.", true);
+      }
+      return;
+    }
+
+    if (eksik.length) {
+      var e0 = eksik.join(" ve ");
+      durum(etiketler.length + " işveren listelendi (dökümün tamamı). " +
+        e0.charAt(0).toLocaleUpperCase("tr") + e0.slice(1) +
+        " girilince liste daralacak.");
+    } else if (etiketler.length > 1) {
+      durum("DİKKAT: bu aralıkta " + etiketler.length +
+        " işveren var — doğru olanı listeden seç.");
+    } else {
+      durum("İşveren seçildi: " + etiketler[0]);
+    }
+  }
+
+  // ------------------------------------------------------------------ hesap
+  function hesapla() {
+    try {
+      if (!S.kayitlar.length) throw new Error("Önce SGK hizmet dökümünü seç.");
+      if (!E("isveren").value) throw new Error("İşveren seçilmedi.");
+
+      var teblig = Hesap.tarih_coz(E("teblig").value);
+      var karar = Hesap.tarih_coz(E("karar").value);
+      var borc = Hesap.para_coz(E("borc").value);
+      var isyeri = E("isveren").value.split(" ")[0];
+
+      S.sonuc = Hesap.hesapla(S.kayitlar, isyeri, teblig, karar, borc,
+        S.ayarlar, S.kisi, E("kusur").value);
+      sonucuGoster();
+
+      var s = S.sonuc, n = s.kalemler.length, kaynak;
+      if (s.pek_ay_sayisi) {
+        kaynak = s.pek_ay_sayisi + " ayın maaşı SGK kazancından hesaplandı, " +
+          (n - s.pek_ay_sayisi) + " ayda asgari ücret";
+      } else {
+        kaynak = "SGK'da her ay tam asgari ücret yazıyor";
+      }
+      if (s.veri_yok_ay) {
+        kaynak += " — DİKKAT: " + s.veri_yok_ay + " ayda kazanç bilgisi yok";
+      }
+      durum("Hesaplandı (" + kaynak + ") — " + n + " ay, toplam " +
+        Hesap.tl(s.toplam) + " TL, borçlandırma " + Hesap.tl(s.borclandirma) + " TL");
+    } catch (e) {
+      S.sonuc = null;
+      hataGoster("Hesaplanamadı", e);
+    }
+  }
+
+  function hucre(tr, metin, sinif) {
+    var td = document.createElement("td");
+    td.textContent = metin;
+    if (sinif) td.className = sinif;
+    tr.appendChild(td);
+    return td;
+  }
+
+  function sonucuGoster() {
+    var s = S.sonuc;
+    var gv = E("tablo_govde");
+    gv.innerHTML = "";
+
+    var ISARET = {
+      "pek": "MAAŞI SGK KAZANCINDAN HESAPLANDI — Uyarılar'a bak",
+      "asgari": "SGK'da tam asgari ücret yazıyor",
+      "veri-yok": "!!! KAZANÇ BİLGİSİ YOK — Uyarılar'a bak"
+    };
+    var ETIKET = { "pek": "pekten", "asgari": "teyitli", "veri-yok": "dikkat" };
+
+    s.kalemler.forEach(function (k) {
+      var tr = document.createElement("tr");
+      tr.className = ETIKET[k.net_kaynak] || "";
+      var isaret = ISARET[k.net_kaynak] || "";
+      var not = k.aciklama;
+      if (isaret) not = (not ? not + "  |  " : "") + isaret;
+      hucre(tr, k.ay_adi + " " + k.yil);
+      hucre(tr, String(k.gun), "sayi");
+      hucre(tr, Hesap.tl(k.pek_30), "sayi");
+      hucre(tr, Hesap.tl(k.net), "sayi");
+      hucre(tr, Hesap.tl(k.ceyrek), "sayi");
+      hucre(tr, Hesap.tl(k.tutar), "sayi");
+      hucre(tr, not);
+      gv.appendChild(tr);
+    });
+
+    var bos = document.createElement("tr");
+    bos.className = "bosluk";
+    bos.innerHTML = "<td colspan='7'></td>";
+    gv.appendChild(bos);
+
+    var tt = document.createElement("tr");
+    tt.className = "toplam";
+    hucre(tt, "TOPLAM");
+    hucre(tt, "", "sayi"); hucre(tt, "", "sayi"); hucre(tt, "", "sayi");
+    hucre(tt, "", "sayi");
+    hucre(tt, Hesap.tl(s.toplam), "sayi");
+    hucre(tt, "kesilmesi gerekip kesilmeyen");
+    gv.appendChild(tt);
+
+    var ust;
+    if (Hesap.borc_girildi(s)) {
+      var tb = document.createElement("tr");
+      tb.className = "toplam";
+      hucre(tb, "Dosya borcu");
+      hucre(tb, "", "sayi"); hucre(tb, "", "sayi"); hucre(tb, "", "sayi");
+      hucre(tb, "", "sayi");
+      hucre(tb, Hesap.tl(s.dosya_borcu), "sayi");
+      hucre(tb, "");
+      gv.appendChild(tb);
+      ust = (s.borclandirma < s.toplam)
+        ? "dosya borcu üst sınır olduğu için"
+        : "toplam dosya borcunu aşmadığı için";
+    } else {
+      // Bos birakildi: "0,00 TL dosya borcu" diye bir sey YAZILMIYOR.
+      ust = "dosya borcu girilmedi, çıkan tutarın tamamı";
+    }
+
+    var ts = document.createElement("tr");
+    ts.className = "sonuc";
+    hucre(ts, "BORÇLANDIRMA");
+    hucre(ts, "", "sayi"); hucre(ts, "", "sayi"); hucre(ts, "", "sayi");
+    hucre(ts, "", "sayi");
+    hucre(ts, Hesap.tl(s.borclandirma), "sayi");
+    hucre(ts, ust + " (faiz ve harç hariç)");
+    gv.appendChild(ts);
+
+    E("tutanak_metni").textContent = Hesap.tutanak_metni(s);
+
+    var tum = S.okuma_uyarilari.map(function (u) { return "[dosya okuma] " + u; })
+      .concat(s.uyarilar.map(function (u) { return "[hesap] " + u; }));
+    tum.push("[bilgi] Çalışma bitişi: " + s.calisma_bitisi);
+    tum.push("[bilgi] Seçilen işyeri: " + s.isyeri);
+    tum.push("[bilgi] Maaş kaynağı: SGK hizmet dökümünün kendisi (PEK sütunu). " +
+      "Program dışarıdan maaş sormuyor, varsayım yapmıyor.");
+    if (S.isverenler.length > 1) {
+      tum.push("[bilgi] Bu aralıkta " + S.isverenler.length +
+        " işveren vardı, biri seçildi.");
+    }
+    uyarilariYaz(tum);
+    sekmeSec("s_tablo");
+  }
+
+  function uyarilariYaz(satirlar) {
+    var kutu = E("uyari_kutusu");
+    kutu.innerHTML = "";
+    if (!satirlar.length) {
+      kutu.textContent = "Uyarı yok, her ay temiz okundu.";
+      return;
+    }
+    satirlar.forEach(function (u) {
+      var d = document.createElement("div");
+      d.textContent = u;
+      if (u.indexOf("!!!") >= 0) d.className = "kotu";
+      kutu.appendChild(d);
+    });
+  }
+
+  // -------------------------------------------------------------- sekmeler
+  function sekmeSec(id) {
+    ["s_tablo", "s_metin", "s_uyari"].forEach(function (s) {
+      E(s).className = "kaydir" + (s === id ? "" : " yok");
+    });
+    var dugmeler = document.querySelectorAll(".sekmeler button");
+    for (var i = 0; i < dugmeler.length; i++) {
+      dugmeler[i].className = (dugmeler[i].dataset.sekme === id) ? "secili" : "";
+    }
+  }
+
+  // ---------------------------------------------------------------- cikti
+  function bilgiSozlugu() {
+    var y = E("b_dosya_yil").value.trim();
+    var n = E("b_dosya_sira").value.trim();
+    return {
+      il: E("b_il").value.trim(),
+      daire: E("b_daire").value.trim(),
+      dosya_no: (y && n) ? (y + "/" + n) : (y || n),
+      borclu: E("b_borclu").value.trim(),
+      isveren_adi: E("b_isveren_adi").value.trim(),
+      personel: E("b_personel").value.trim(),
+      imza_ad: E("b_imza_ad").value.trim(),
+      imza_unvan: E("b_imza_unvan").value.trim(),
+      imza_sicil: E("b_imza_sicil").value.trim()
+    };
+  }
+
+  function adParca() {
+    var d = bilgiSozlugu();
+    var parcalar = [d.dosya_no, d.borclu || S.kisi].filter(Boolean);
+    var temiz = parcalar.join("_").split("/").join("-");
+    return (temiz || "tensip") + "_tensip";
+  }
+
+  function indir(blob, ad) {
+    var a = document.createElement("a");
+    var u = URL.createObjectURL(blob);
+    a.href = u;
+    a.download = ad;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(u); }, 4000);
+  }
+
+  function wordeAktar() {
+    if (!S.sonuc) { uyariPenceresi("Önce hesapla", "Henüz bir hesap yok."); return; }
+    var ek = E("ek_kutusu").checked;
+    var ad = adParca() + ".docx";
+    durum("Word hazırlanıyor…");
+    DisaAktar.word_uret(S.sonuc, bilgiSozlugu(), ek, "blob").then(function (r) {
+      indir(r.veri, ad);
+      var nerede = ek ? "hesap dökümü eki 2. sayfada" : "tek sayfa";
+      // toFixed(1), String() DEGIL: masaustu Python'un str(9.0)'i "9.0"
+      // verir, JS'in String(9.0)'i "9". PUNTO_KADEME'nin dort degerinde
+      // (10.5 / 10.0 / 9.5 / 9.0) toFixed(1) Python'un yazimiyla birebir
+      // ayni. Bu farki kiyas yakaladi -- once "9 punto" yaziyordu.
+      durum("Word indirildi (" + r.punto.toFixed(1).replace(".", ",") +
+        " punto, " + nerede + "): " + ad);
+      // Susmak yasak: icerik cok uzunsa tutanak tek sayfaya SIGMAZ.
+      if (!r.sigar) {
+        uyariPenceresi("Tek sayfaya sığmadı",
+          "Tutanak metni çok uzun (çok ay veya çok uzun unvan).\n\n" +
+          "En küçük punto (9) ile bile tek sayfaya sığmadı, belge 2 sayfa oldu.\n\n" +
+          "Daha fazla küçültülürse okunmaz hale gelirdi, o yüzden küçültülmedi.");
+      }
+    }).catch(function (e) { hataGoster("Word yazılamadı", e); });
+  }
+
+  function metniKopyala() {
+    if (!S.sonuc) { uyariPenceresi("Önce hesapla", "Henüz bir hesap yok."); return; }
+    var metin = E("tutanak_metni").textContent;
+
+    function yedekYol() {
+      // file:// "guvenli baglam" sayilmayabiliyor, o zaman clipboard API yok.
+      try {
+        var t = document.createElement("textarea");
+        t.value = metin;
+        t.style.position = "fixed";
+        t.style.opacity = "0";
+        document.body.appendChild(t);
+        t.select();
+        var oldu = document.execCommand("copy");
+        document.body.removeChild(t);
+        return oldu;
+      } catch (e) { return false; }
+    }
+
+    function bitir(oldu) {
+      if (oldu) {
+        durum("Tutanak metni panoya kopyalandı.");
+      } else {
+        // Sessizce basarisiz olma: kullanici yapistirinca eski seyi
+        // yapistirir ve fark etmez.
+        durum("Panoya kopyalanamadı (tarayıcı izin vermedi) — " +
+          "“Tutanak metni” sekmesinden elle seçip Ctrl+C yap.", true);
+        sekmeSec("s_metin");
+      }
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(metin)
+        .then(function () { bitir(true); })
+        .catch(function () { bitir(yedekYol()); });
+    } else {
+      bitir(yedekYol());
+    }
+  }
+
+  // ------------------------------------------------------------------ baglar
+  function bugun() {
+    var d = new Date();
+    return Hesap.tarih_str({ gun: d.getDate(), ay: d.getMonth() + 1, yil: d.getFullYear() });
+  }
+
+  function baglaniklariKur() {
+    E("dosya_dugme").onclick = function () { E("dosya_girdi").click(); };
+    E("dosya_girdi").onchange = function (ev) {
+      dosyaSecildi(ev.target.files[0]);
+      ev.target.value = "";        // ayni dosya tekrar secilebilsin
+    };
+
+    var alan = E("birak_alani");
+    ["dragenter", "dragover"].forEach(function (o) {
+      alan.addEventListener(o, function (ev) {
+        ev.preventDefault();
+        alan.classList.add("uzerinde");
+      });
+    });
+    ["dragleave", "drop"].forEach(function (o) {
+      alan.addEventListener(o, function (ev) {
+        ev.preventDefault();
+        alan.classList.remove("uzerinde");
+      });
+    });
+    alan.addEventListener("drop", function (ev) {
+      if (ev.dataTransfer && ev.dataTransfer.files.length) {
+        dosyaSecildi(ev.dataTransfer.files[0]);
+      }
+    });
+
+    // Masaustu surumde olculmustu: alanlari sadece "odak kaybi"na baglamak
+    // yetmiyor -- kullanici tarihi yazip dogrudan HESAPLA'ya basiyor ve liste
+    // tazelenmemis oluyordu. Her tus vurusunda tazele.
+    E("teblig").addEventListener("input", isverenleriYenile);
+    E("karar").addEventListener("input", isverenleriYenile);
+
+    E("hesapla_dugme").onclick = hesapla;
+    E("kopyala_dugme").onclick = metniKopyala;
+    E("word_dugme").onclick = wordeAktar;
+    E("ayarlar_dugme").onclick = ayarlariGoster;
+
+    var dugmeler = document.querySelectorAll(".sekmeler button");
+    for (var i = 0; i < dugmeler.length; i++) {
+      dugmeler[i].onclick = function () { sekmeSec(this.dataset.sekme); };
+    }
+
+    // Dosya no: yil 4 hane olunca imlec kendiliginden sira kutusuna atlar.
+    // Sira kutusuna maske YOK -- kac haneli oldugu bilinmiyor, kullanici
+    // kilitlenmesin.
+    E("b_dosya_yil").addEventListener("input", function () {
+      var ham = this.value;
+      var temiz = ham.replace(/[^0-9]/g, "").slice(0, 4);
+      if (temiz !== ham) { this.value = temiz; }
+      if (temiz.length === 4) E("b_dosya_sira").focus();
+    });
+
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") ortuKapat();
+    });
+  }
+
+  // ------------------------------------------------------------------ acilis
+  if (!yuklemeyiKontrolEt()) return;
+  baglaniklariKur();
+  E("karar").value = bugun();
+  ayarlariYukle();
+
+  // ?demo=1 ile deneme bilgileri doldurulur (dosya secmek yine gerekiyor --
+  // tarayici kendiliginden diskten dosya acamaz).
+  if (location.search.indexOf("demo=1") >= 0) {
+    E("teblig").value = "25.11.2025";
+    E("karar").value = "28.08.2026";
+    E("borc").value = "33.121,92";
+    E("b_il").value = "ornekil";
+    E("b_daire").value = "3";
+    E("b_dosya_yil").value = "2025";
+    E("b_dosya_sira").value = "10000";
+    durum("Deneme bilgileri dolduruldu — şimdi SGK hizmet dökümünü seç.");
+  }
+
+  // Testin bekleyebilmesi ve elle bakabilmek icin disari birak.
+  window.UYGULAMA = S;
+})();
+</script>
+</body>
+</html>
