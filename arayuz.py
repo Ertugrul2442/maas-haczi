@@ -75,7 +75,12 @@ class Uygulama(tk.Tk):
         self.v_dosya = tk.StringVar()
         ttk.Entry(g, textvariable=self.v_dosya).grid(row=0, column=1, columnspan=3,
                                                      sticky="ew", padx=6)
-        ttk.Button(g, text="Seç...", command=self.dosya_sec, width=10)\
+        # ttk.Button DEGIL: Windows "vista" temasi ttk butonunun arka planini
+        # kendi ciziyor, background secenegi sessizce yok sayiliyor.
+        # Duz tk.Button renk aliyor. Web surumundeki yesille ayni (#1e7a44).
+        tk.Button(g, text="Seç...", command=self.dosya_sec, width=10,
+                  bg="#1e7a44", fg="white", activebackground="#176035",
+                  activeforeground="white", relief="flat", cursor="hand2")\
             .grid(row=0, column=4, sticky="w")
 
         ttk.Label(g, text="Müzekkere tebliğ tarihi:").grid(row=1, column=0, sticky="w", pady=3)
@@ -146,6 +151,10 @@ class Uygulama(tk.Tk):
                 self._dosya_no_kutulari(t, r, c * 2 + 1)
                 continue
             self.v_bilgi[anahtar] = tk.StringVar()
+            if anahtar == "il":
+                # En cok kullanilan il hazir gelsin; kullanici degistirebilir.
+                # Web surumunde de ayni varsayilan var (web/index.html).
+                self.v_bilgi[anahtar].set("Konya")
             ttk.Entry(t, textvariable=self.v_bilgi[anahtar])\
                 .grid(row=r, column=c * 2 + 1, sticky="ew", padx=(4, 14), pady=2)
 

@@ -269,7 +269,10 @@ def _ui_bilgi(kisi, borclu_bos, form=None):
     senaryo sart -- gercek kullanim da zaten oyle.
     """
     d = {
-        "il": "", "daire": "", "dosya_no": "",
+        # "il" bos DEGIL: hem masaustu (arayuz.py) hem web (index.html)
+        # bu alani "Konya" ile dolu aciyor -- kullanici isterse degistirir.
+        # Buraya "" yazilirsa kiyas kirilir, cunku sayfa Konya gosteriyor.
+        "il": "Konya", "daire": "", "dosya_no": "",
         "borclu": "" if borclu_bos else kisi,
         "isveren_adi": "", "personel": "",
         "imza_ad": "", "imza_unvan": "", "imza_sicil": "",
