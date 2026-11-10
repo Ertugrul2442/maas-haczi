@@ -201,15 +201,34 @@
   }
 
   // '33.121,92' veya '33121.92' -> 33121.92
+  // hesap.py para_coz'un birebir portu. '33.121' artik BINLIK (otuz uc bin);
+  // eskiden 33,121 okunup dosya borcu sessizce 33,12 TL'ye dusuyordu.
+  // Karisik/belirsiz yazim tahmin edilmiyor, hata veriliyor (mesaj Python'la
+  // harfi harfine ayni -- kiyas_hesap onu da kiyasliyor).
+  const _BINLIK = /^\d{1,3}(\.\d{3})+$/;
+
   function para_coz(metin) {
     let t = (metin || "").trim().split(" ").join("").split("TL").join("");
     if (!t) return 0.0;
+    const hata = new Error("Tutar anlaşılamadı: '" + (metin || "").trim() +
+      "' — örnek yazım: 33.121,92");
+    const isaretsiz = (s) => (s.charAt(0) === "-" ? s.slice(1) : s);
     if (t.indexOf(",") >= 0) {
-      t = t.split(".").join("").replace(",", ".");
+      const parca = t.split(",");
+      if (parca.length !== 2) throw hata;
+      const tam = parca[0], kurus = parca[1];
+      if (tam.indexOf(".") >= 0 && !_BINLIK.test(isaretsiz(tam))) throw hata;
+      if (!/^\d+$/.test(kurus) || kurus.length > 2) throw hata;
+      t = tam.split(".").join("") + "." + kurus;
+    } else if (t.indexOf(".") >= 0) {
+      if (_BINLIK.test(isaretsiz(t))) {
+        t = t.split(".").join("");
+      } else if (t.split(".").length !== 2 || t.split(".")[1].length > 2) {
+        throw hata;
+      }
     }
-    const v = Number(t);
-    if (!isFinite(v)) throw new Error("Sayi anlasilamadi: '" + metin + "'");
-    return v;
+    if (!/^-?(\d+(\.\d*)?|\.\d+)$/.test(t)) throw hata;
+    return Number(t);
   }
 
   // ------------------------------------------------------------------------

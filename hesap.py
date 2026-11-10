@@ -171,14 +171,44 @@ def tarih_coz(metin):
     raise ValueError(f"Tarih anlasilamadi: {metin!r}  (ornek: 25.11.2025)")
 
 
+_BINLIK = re.compile(r"\d{1,3}(\.\d{3})+", re.ASCII)
+
+
 def para_coz(metin):
-    """'33.121,92' veya '33121.92' -> 33121.92"""
-    metin = (metin or "").strip().replace(" ", "").replace("TL", "")
-    if not metin:
+    """'33.121,92' / '33.121' / '33121,92' / '33121.92' -> sayi.
+
+    Eskiden virgul yoksa nokta ONDALIK sayiliyordu: '33.121' (otuz uc bin)
+    33,121 TL okunuyor, dosya borcu sessizce 33,12 TL'ye dusuyordu. Simdi:
+    - nokta yalniz 3'lu gruplari ayiriyorsa ('33.121', '1.234.567') BINLIK,
+    - tek nokta + en fazla 2 hane ('33121.92') ondalik,
+    - kurus 2 haneden uzunsa ya da yazim karisiksa ('1,234.56') HATA --
+      tahmin edilmiyor, kullaniciya soruluyor.
+    web/hesap.js'teki para_coz bunun birebir portu; kiyas_hesap ikisini
+    hata mesajlariyla birlikte kiyasliyor.
+    """
+    ham = metin
+    t = (metin or "").strip().replace(" ", "").replace("TL", "")
+    if not t:
         return 0.0
-    if "," in metin:                      # Turkce yazim
-        metin = metin.replace(".", "").replace(",", ".")
-    return float(metin)
+    hata = ValueError(f"Tutar anlaşılamadı: '{(ham or '').strip()}' — "
+                      "örnek yazım: 33.121,92")
+    if "," in t:                                   # Turkce yazim
+        if t.count(",") != 1:
+            raise hata
+        tam, kurus = t.split(",")
+        if "." in tam and not _BINLIK.fullmatch(tam.lstrip("-")):
+            raise hata
+        if not re.fullmatch(r"\d+", kurus, re.ASCII) or len(kurus) > 2:
+            raise hata
+        t = tam.replace(".", "") + "." + kurus
+    elif "." in t:
+        if _BINLIK.fullmatch(t.lstrip("-")):       # 33.121 -> 33121
+            t = t.replace(".", "")
+        elif t.count(".") != 1 or len(t.split(".")[1]) > 2:
+            raise hata
+    if not re.fullmatch(r"-?(\d+(\.\d*)?|\.\d+)", t, re.ASCII):
+        raise hata
+    return float(t)
 
 
 # --------------------------------------------------------------------------

@@ -868,8 +868,9 @@
   function ceyrekOner(net) { return Math.floor(_kurus(net) / 4) / 100; }
 
   // "33.030" gibi tek noktali ve noktadan sonra tam 3 haneli yazim
-  // BELIRSIZ: Hesap.para_coz bunu 33,03 okuyor (masaustu de). Asgari ucret
-  // formunda bu sessizce bin kat hata demek -- sor, tahmin etme.
+  // BELIRSIZ sayiliyor. Hesap.para_coz artik bunu binlik okuyor (33.030 TL;
+  // 10.11.2026'ya kadar 33,03 okuyordu). Asgari ucret formu BILEREK daha
+  // kati kaliyor: yanlis okuma resmi tabloyu bin kat bozar -- sor, tahmin etme.
   function elleSayi(ad, metin) {
     var m = String(metin || "").replace(/\s|TL/g, "");
     if (!m) throw new Error(ad + " boş.");

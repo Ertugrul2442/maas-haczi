@@ -214,9 +214,19 @@ def yardimci_kayitlari():
         cikti.append({"tip": "tarih_coz", "girdi": [t],
                       "bekle": [hesap.tarih_str(hesap.tarih_coz(t))]})
 
-    for p in ["33.121,92", "33121.92", "", "  1.000,00 TL ", "0", "5,5"]:
-        cikti.append({"tip": "para_coz", "girdi": [p],
-                      "bekle": [repr(hesap.para_coz(p))]})
+    # Hatali yazimda iki taraf AYNI mesajla patlamali; JS "PATLADI: ..." yaziyor.
+    # "33.121" eskiden 33,121 okunuyordu (dosya borcu sessizce 33,12 TL).
+    for p in ["33.121,92", "33121.92", "", "  1.000,00 TL ", "0", "5,5",
+              "33.121", "1.234.567", "33.030", "1.234.567,89", "33121",
+              "33.12", "33.1", "1.5", "33121,9", "33 121,92", "33.121 TL",
+              "1,234.56", "33,121", "33121.920", "1.23.456", "12.3456",
+              "1,2,3", "abc", "1e5", "33.121,", ",5", "-1.000,50", "TL",
+              "33,12a", "١٢٣", "²", "Infinity", "NaN", "1..2", "."]:
+        try:
+            bekle = repr(hesap.para_coz(p))
+        except ValueError as e:
+            bekle = "PATLADI: " + str(e)
+        cikti.append({"tip": "para_coz", "girdi": [p], "bekle": [bekle]})
     return cikti
 
 

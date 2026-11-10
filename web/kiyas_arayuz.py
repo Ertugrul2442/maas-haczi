@@ -433,6 +433,10 @@ def main():
         # Ayni dosya, borc TOPLAMIN ALTINDA -> "dosya borcu ust sinir".
         senaryo("sentetik:duz_asgari_borc_dusuk", yollar["duz_asgari"],
                 "05.01.2026", "20.03.2026", "5.000,00", "cevap-yok", "900001", False),
+        # Ayni borc KURUSSUZ yazilmis: "5.000" bes bin TL olmali. 10.11.2026'ya
+        # kadar para_coz bunu 5,00 TL okuyordu, borclandirma sessizce 5 TL.
+        senaryo("sentetik:borc_kurussuz", yollar["duz_asgari"],
+                "05.01.2026", "20.03.2026", "5.000", "cevap-yok", "900001", False),
         # Ayni dosya, borc TOPLAMIN USTUNDE -> "toplam dosya borcunu asmadigi".
         senaryo("sentetik:duz_asgari_borc_yuksek", yollar["duz_asgari"],
                 "05.01.2026", "20.03.2026", "90.000,00", "cevap-yok", "900001", False),
