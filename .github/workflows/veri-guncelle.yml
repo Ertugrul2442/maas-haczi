@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  actions: write     # yeni veri gelince pages.yml'i tetikleyebilmek icin (asagida)
 
 concurrency:
   group: veri-guncelle
@@ -120,3 +121,26 @@ jobs:
             echo "\`TARIFE\` sözlüğüne yeni yılın satırı elle eklenmeli - iş akışı"
             echo "kaydında yapıştırılacak satır basılı."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Yeni rakam İNTERNETTEKİ SAYFAYA da gitsin.
+      #
+      # ⚠ GitHub'ın kuralı: bu iş akışının kendi anahtarıyla (GITHUB_TOKEN)
+      # yapılan push BAŞKA HİÇBİR iş akışını tetiklemez. Yani yukarıdaki
+      # push'tan sonra pages.yml kendiliğinden KOŞMAZ ve github.io ESKİ
+      # asgari ücretle hesaplamaya devam ederdi — sessizce. (11.09.2026'da
+      # fark edildi; o güne kadar yeni rakam hiç gelmediği için yaşanmadı.)
+      # Kuralın tek istisnası elle tetikleme (workflow_dispatch); onu burada
+      # iş akışı kendisi yapıyor. Testler de aynı sebeple kendiliğinden
+      # koşmazdı, onlar da tetikleniyor.
+      #
+      # ⚠ Flaştaki tek dosya (dagitim/Maas Haczi.html) bundan ETKİLENMEZ:
+      # içindeki tablo üretildiği anın kopyası. Yeni yıl gelince yeniden
+      # üretilip flaşa atılmalı:  node web/tek_dosya_uret.js
+      - name: Sayfayı ve testleri yeniden koştur
+        if: steps.cek.outputs.yeni == 'evet'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run pages.yml --ref main
+          gh workflow run web-testleri.yml --ref main
+          echo "Sayfa yeniden yayına ve testler koşuya gönderildi."

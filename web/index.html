@@ -61,6 +61,30 @@
   }
   .mahremiyet b { font-weight: 650; }
 
+  /* Asgari ucret tablosu nereden geldi: internetten mi, dosyanin icinden mi */
+  .tablo-kaynagi {
+    margin: -6px 0 14px; padding: 7px 12px; border-radius: 6px; font-size: 13px;
+    background: #f1f2f4; border: 1px solid var(--cizgi); color: var(--soluk);
+  }
+  .tablo-kaynagi.guncel { background: #eaf3ea; border-color: #bcd6bc; color: #244d24; }
+  .tablo-kaynagi.yedek { background: #fff4e5; border-color: #f0c98a; color: #6b4200; }
+  .tablo-kaynagi b { font-weight: 650; }
+  .tablo-kaynagi small { display: block; margin-top: 3px; opacity: 0.8; font-size: 12px; }
+  .tablo-kaynagi .elle-satiri { margin-top: 5px; font-weight: 600; }
+  .tablo-kaynagi .elle-dugme { margin-top: 7px; font-size: 13px; padding: 4px 10px; }
+
+  /* Elle asgari ucret girisi penceresi */
+  .ortu h4 { margin: 16px 0 6px; font-size: 14px; }
+  .elle-mesaj { margin-top: 10px; font-size: 13px; white-space: pre-wrap; }
+  .elle-mesaj:empty { display: none; }
+  .elle-mesaj.hata { color: var(--kirmizi); font-weight: 600; }
+  .elle-mesaj.uyari { color: #6b4200; background: #fff4e5; border: 1px solid #f0c98a;
+    border-radius: 6px; padding: 8px 10px; }
+  .elle-mesaj.onay { color: #244d24; background: #eaf3ea; border: 1px solid #bcd6bc;
+    border-radius: 6px; padding: 8px 10px; }
+  .elle-form .alan { flex: 1 1 130px; }
+  .elle-form input[type=text] { width: 100%; }
+
   .kart {
     background: var(--kart); border: 1px solid var(--cizgi);
     border-radius: 8px; padding: 14px 16px 16px; margin-bottom: 14px;
@@ -217,8 +241,11 @@
     <b>Dosya bu bilgisayardan çıkmıyor.</b> SGK hizmet dökümü hiçbir yere
     yüklenmiyor, hiçbir sunucuya gönderilmiyor. Hesap tamamen tarayıcının
     içinde yapılıyor; sayfayı kapattığında geriye hiçbir şey kalmıyor.
-    (İnternet bağlantısı olmadan da çalışır.)
+    İnternet varsa açılışta yalnızca asgari ücret tablosunun güncelini okur —
+    senin dosyandan hiçbir şey gönderilmez. İnternet olmadan da çalışır.
   </div>
+
+  <div id="tablo_kaynagi" class="tablo-kaynagi">Asgari ücret tablosu yükleniyor…</div>
 
   <div id="kurulum_hatasi" class="yok"></div>
 
@@ -380,6 +407,17 @@
     sonuc: null,
     ayarlar: null,
     dosya_adi: "",
+    tablo_kaynagi: "gömülü",   // "gömülü" ya da tablonun geldigi kaynagin adi
+    guncelleme: null,          // internetten tablo kontrolu surerken Promise
+    cevrimici_notlar: [],      // her kaynaktan ne geldi (ekranda da yaziyor)
+    ilk_durum: "",
+    temel: null,               // resmi tablo (internetten ya da gomulu), ham hali
+    ayarlar_resmi: null,       // ayni tablo, elle girisler EKLENMEMIS
+    elle_kullanilan: [],       // tabloya giren elle donemler ("2027-01")
+    elle_ezilen: [],           // resmi tablo gelince kullanilmayan elle girisler (mesaj)
+    elle_red: "",              // elle girisler tabloyla celisiyorsa sebep
+    elle_depo_hatasi: "",      // tarayici kayit tutamiyorsa
+    kutu: ["", "", "", ""],    // tablo kaynagi kutusunun son icerigi
   };
 
   function E(id) { return document.getElementById(id); }
@@ -416,7 +454,9 @@
     k.className = "";
     k.innerHTML = "<b>Program eksik yüklendi — hesap yapılamaz.</b>" +
       "<div>Aşağıdaki dosyalar bu sayfanın yanında bulunamadı. " +
-      "Klasörün tamamını (lib/ dahil) kopyaladığından emin ol.</div><ul></ul>";
+      "Klasörün tamamını (lib/ dahil) kopyaladığından emin ol — ya da " +
+      "bunun yerine tek başına çalışan <b>Maas Haczi.html</b> dosyasını " +
+      "kullan; yanına hiçbir şey kopyalamak gerekmez.</div><ul></ul>";
     var ul = k.querySelector("ul");
     eksik.forEach(function (ad) {
       var li = document.createElement("li");
@@ -463,17 +503,625 @@
   }
 
   // ----------------------------------------------------------------- ayarlar
+  function _sonDonemMetni(ayarlar) {
+    var son = ayarlar.donemler[ayarlar.donemler.length - 1];
+    var b = son.yil + "-" + (son.ay < 10 ? "0" : "") + son.ay;
+    return "en son dönem " + (son.ay < 10 ? "0" : "") + son.ay + "/" + son.yil +
+      (S.elle_kullanilan.indexOf(b) >= 0 ? " (ELLE GİRİLDİ)" : "") +
+      ", net " + Hesap.tl(son.net) + " TL, 1/4 = " + Hesap.tl(son.ceyrek) + " TL";
+  }
+
+  function ayarlarDurumu() {
+    durum("Asgari ücret tablosu yüklendi — " + _sonDonemMetni(S.ayarlar) +
+      ".  SGK hizmet dökümünü seçerek başla.");
+    S.ilk_durum = E("durum_metni").textContent;
+  }
+
   function ayarlariYukle() {
     try {
-      S.ayarlar = Hesap.Ayarlar.kur(AYARLAR_VERI);
-      var son = S.ayarlar.donemler[S.ayarlar.donemler.length - 1];
-      durum("Asgari ücret tablosu yüklendi — en son dönem " +
-        (son.ay < 10 ? "0" : "") + son.ay + "/" + son.yil +
-        ", net " + Hesap.tl(son.net) + " TL, 1/4 = " + Hesap.tl(son.ceyrek) +
-        " TL.  SGK hizmet dökümünü seçerek başla.");
+      tabloyuKur(AYARLAR_VERI);
+      ayarlarDurumu();
     } catch (e) {
       hataGoster("Asgari ücret tablosu okunamadı", e);
     }
+  }
+
+  // -------------------------------- asgari ucret: internetten guncelleme
+  // NEDEN (11.09.2026, Ertugrul'un istegi): flasa giden tek dosyanin
+  // (web/tek_dosya_uret.js) icindeki tablo, uretildigi anin kopyasi; yeni
+  // asgari ucret gelince flastaki dosya eskide kalirdi. Artik acilista
+  // tablonun GUNCELI internetten okunuyor. Kaynak depodaki ayarlar.json --
+  // onu her gun GitHub'in kendi isi Bakanlik sayfasindan tazeliyor
+  // (veri-guncelle.yml); elle duzeltme de oraya yapiliyor.
+  //
+  // OLCULDU (11.09.2026, Chromium): file:// ile acilan sayfa bu uc adresten
+  // fetch EDEBILIYOR -- yasak olan YEREL dosya okumak, internet degil.
+  // Adliye agi github.io'yu acmadi; jsDelivr baska bir sirket. O yuzden ucu
+  // AYNI ANDA deneniyor ve en yeni donemi olan seciliyor.
+  //
+  // GUVENLIK: gelen tablo KORU KORUNE KULLANILMAZ. Kurum agi "erisim
+  // engellendi" sayfasini 200 ile dondurebilir, dosya yarim gelebilir.
+  // tabloyuDenetle() tutarsizlikta REDDEDER; o zaman dosyanin icindeki
+  // tablo kalir ve bu ekrana yazilir -- sessiz degil.
+  //
+  // MAHREMIYET: yalnizca bu uc sabit adrese, sayfa acilirken GET gider. SGK
+  // dokumunden hicbir sey gonderilmez; dokum secildikten sonra hic istek
+  // cikmaz (web/kiyas_cevrimici.js olcuyor).
+  var CEVRIMICI_KAYNAKLAR = [
+    ["GitHub", "https://raw.githubusercontent.com/Ertugrul2442/maas-haczi/main/ayarlar.json"],
+    ["GitHub Pages", "https://ertugrul2442.github.io/maas-haczi/ayarlar.json"],
+    ["jsDelivr", "https://cdn.jsdelivr.net/gh/Ertugrul2442/maas-haczi@main/ayarlar.json"]
+  ];
+  // Olculdu: GitHub'in ham adresi ilk istekte 7,8 sn surdu. Kaynaklar ayni
+  // anda denendigi icin en kotu bekleme tek kaynagin suresi kadar.
+  var CEVRIMICI_SURE_MS = 10000;
+
+  function _donemYaz(b) { return b.slice(5, 7) + "/" + b.slice(0, 4); }
+  function _sonBaslangic(veri) { return veri.donemler[veri.donemler.length - 1].baslangic; }
+  function _sayiMi(x) { return typeof x === "number" && isFinite(x); }
+
+  // Internetten gelen tabloyu denetler. Sorun varsa sebebini (insanin
+  // okuyacagi dille) dondurur, yoksa null. `gomulu`: bu dosyanin icindeki
+  // tablo (AYARLAR_VERI).
+  function tabloyuDenetle(veri, gomulu) {
+    if (!veri || typeof veri !== "object" || !Array.isArray(veri.donemler) ||
+        !veri.donemler.length) {
+      return "gelen şey asgari ücret tablosu değil";
+    }
+    function vs(x, v) { return x === undefined ? v : x; }
+    if (vs(veri.oran, 0.25) !== vs(gomulu.oran, 0.25) ||
+        vs(veri.ay_gun, 30) !== vs(gomulu.ay_gun, 30)) {
+      return "kesinti oranı ya da ay gün sayısı değişmiş — bu sürüm o " +
+        "değişikliği bilmiyor, programın yenisi gerekiyor";
+    }
+    var oran = vs(veri.oran, 0.25), onceki = null, i, d, ad;
+    for (i = 0; i < veri.donemler.length; i++) {
+      d = veri.donemler[i];
+      if (!d || !/^\d{4}-(0[1-9]|1[0-2])$/.test(String(d.baslangic))) {
+        return (i + 1) + ". dönemin tarihi bozuk";
+      }
+      ad = _donemYaz(d.baslangic);
+      if (!_sayiMi(d.net) || d.net <= 0) return ad + ": net ücret geçersiz";
+      if ("brut" in d && (!_sayiMi(d.brut) || d.net >= d.brut || d.net < d.brut * 0.6)) {
+        return ad + ": net ile brüt birbirini tutmuyor";
+      }
+      // 1/4 elle yaziliyor ve daire tutarli yuvarlamiyor (CLAUDE.md tuzak 2):
+      // bir kurus fark normal, fazlasi degil.
+      if ("ceyrek" in d && (!_sayiMi(d.ceyrek) || Math.abs(d.ceyrek - d.net * oran) > 0.011)) {
+        return ad + ": 1/4 tutarı net ücretle uyuşmuyor";
+      }
+      if (onceki) {
+        if (d.baslangic <= onceki.baslangic) return ad + ": dönemler sırasız";
+        if (d.net < onceki.net) return ad + ": net ücret bir önceki dönemden düşük";
+        if (d.net > onceki.net * 3) return ad + ": net ücret bir önceki dönemin 3 katından fazla";
+      }
+      onceki = d;
+    }
+    var olanlar = {};
+    veri.donemler.forEach(function (x) { olanlar[x.baslangic] = true; });
+    for (i = 0; i < gomulu.donemler.length; i++) {
+      if (!olanlar[gomulu.donemler[i].baslangic]) {
+        return _donemYaz(gomulu.donemler[i].baslangic) +
+          " dönemi internetteki tabloda yok (tablo eksik ya da eski)";
+      }
+    }
+    try { Hesap.Ayarlar.kur(veri); } catch (e) { return "tablo yüklenemedi: " + e.message; }
+    return null;
+  }
+
+  function tabloFarki(eski, yeni) {
+    var eskiler = {}, eklenen = [], degisen = [];
+    eski.donemler.forEach(function (d) { eskiler[d.baslangic] = d; });
+    yeni.donemler.forEach(function (d) {
+      var e = eskiler[d.baslangic];
+      if (!e) eklenen.push(d.baslangic);
+      else if (e.net !== d.net || e.ceyrek !== d.ceyrek || e.brut !== d.brut) degisen.push(d.baslangic);
+    });
+    return { eklenen: eklenen, degisen: degisen };
+  }
+
+  // Tek kaynaktan getirir. Hic reddetmez: {ad, veri} ya da {ad, hata}.
+  function _getir(kaynak) {
+    var ad = kaynak[0], saat;
+    var iptal = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var sure = new Promise(function (_, red) {
+      saat = setTimeout(function () {
+        red(new Error("zaman aşımı (" + CEVRIMICI_SURE_MS / 1000 + " sn)"));
+        if (iptal) iptal.abort();
+      }, CEVRIMICI_SURE_MS);
+    });
+    var istek = fetch(kaynak[1], { cache: "no-store", signal: iptal ? iptal.signal : undefined })
+      .then(function (r) {
+        if (!r.ok) throw new Error("sunucu " + r.status + " döndürdü");
+        return r.text();
+      })
+      .then(function (metin) {
+        try { return JSON.parse(metin); } catch (e) {
+          throw new Error("gelen şey tablo değil (kurum ağının engelleme sayfası olabilir)");
+        }
+      });
+    return Promise.race([istek, sure]).then(
+      function (veri) { clearTimeout(saat); return { ad: ad, veri: veri }; },
+      function (e) {
+        clearTimeout(saat);
+        var m = (e && e.message) || String(e);
+        // Tarayici ag hatasini Ingilizce ve bilgisiz veriyor ("Failed to fetch").
+        if (e && e.name === "TypeError") m = "ulaşılamadı (internet yok ya da adres engelli)";
+        return { ad: ad, hata: m };
+      });
+  }
+
+  // Butun metin textContent ile yaziliyor: hata metinleri disaridan gelen
+  // veriden turemis olabilir, HTML olarak basilmamali.
+  function kaynakYaz(sinif, kalin, metin, ayrinti) {
+    S.kutu = [sinif, kalin, metin, ayrinti];
+    kutuyuCiz();
+  }
+
+  // Kutuyu S.kutu'dan ve elle giris durumundan yeniden cizer. Elle giris
+  // kaydedilince/silinince de cagriliyor.
+  function kutuyuCiz() {
+    var a = S.kutu, k = E("tablo_kaynagi");
+    k.className = "tablo-kaynagi" + (a[0] ? " " + a[0] : "");
+    k.textContent = "";
+    if (a[1]) {
+      var b = document.createElement("b");
+      b.textContent = a[1];
+      k.appendChild(b);
+    }
+    k.appendChild(document.createTextNode(a[2]));
+    if (a[3]) {
+      var s = document.createElement("small");
+      s.textContent = a[3];
+      k.appendChild(s);
+    }
+    var satirlar = [];
+    if (S.elle_kullanilan.length) {
+      var elle = elleOku();
+      satirlar.push("✎ ELLE GİRİLEN asgari ücret kullanılıyor: " +
+        S.elle_kullanilan.map(function (bs) {
+          var e = elle.filter(function (x) { return x.baslangic === bs; })[0];
+          return _donemYaz(bs) + (e ? " (net " + Hesap.tl(e.net) + " TL, 1/4 = " +
+            Hesap.tl(e.ceyrek) + " TL)" : "");
+        }).join(", ") + " — resmi tablodan gelmedi, bu bilgisayarda kayıtlı.");
+    }
+    S.elle_ezilen.forEach(function (m) { satirlar.push(m); });
+    if (S.elle_red) {
+      satirlar.push("Elle girilen asgari ücret KULLANILMADI: " + S.elle_red +
+        " — aşağıdaki düğmeyle düzelt ya da sil.");
+    }
+    if (S.elle_depo_hatasi) satirlar.push(S.elle_depo_hatasi);
+    satirlar.forEach(function (m) {
+      var d = document.createElement("div");
+      d.className = "elle-satiri";
+      d.textContent = m;
+      k.appendChild(d);
+    });
+    var dugme = document.createElement("button");
+    dugme.type = "button";
+    dugme.id = "elle_dugme";
+    dugme.className = "elle-dugme";
+    dugme.textContent = "Asgari ücreti elle gir / düzelt";
+    dugme.onclick = elleGirisPenceresi;
+    k.appendChild(dugme);
+  }
+
+  function cevrimiciGuncelle() {
+    if (typeof fetch === "undefined" || typeof Promise === "undefined") {
+      kaynakYaz("yedek", "Asgari ücret tablosu internetten kontrol edilemedi",
+        " — bu tarayıcı desteklemiyor. Dosyanın içindeki tablo kullanılıyor (" +
+        _sonDonemMetni(S.ayarlar_resmi) + ").", "");
+      return null;
+    }
+    kaynakYaz("", "", "Asgari ücret tablosunun güncel hâli internetten kontrol ediliyor…", "");
+    return Promise.all(CEVRIMICI_KAYNAKLAR.map(_getir)).then(function (sonuclar) {
+      var gecerli = [], notlar = [];
+      sonuclar.forEach(function (s) {
+        if (s.hata) { notlar.push(s.ad + ": " + s.hata); return; }
+        var red = tabloyuDenetle(s.veri, AYARLAR_VERI);
+        if (red) { notlar.push(s.ad + ": REDDEDİLDİ — " + red); return; }
+        gecerli.push(s);
+        notlar.push(s.ad + ": tamam (en son dönem " + _donemYaz(_sonBaslangic(s.veri)) + ")");
+      });
+      S.cevrimici_notlar = notlar;
+      var ayrinti = notlar.join(" · ");
+
+      if (!gecerli.length) {
+        kaynakYaz("yedek", "İnternetteki güncel tabloya ulaşılamadı",
+          " — bu dosyanın içindeki tablo kullanılıyor (" + _sonDonemMetni(S.ayarlar_resmi) +
+          "). Yeni asgari ücret açıklandıysa aşağıdaki düğmeyle elle gir; " +
+          "girmezsen program Uyarılar'da ayrıca bağırır.", ayrinti);
+        return;
+      }
+      // En yeni donemi olan kazanir. Esitlikte liste sirasi: GitHub'in ham
+      // adresi en taze (5 dk), jsDelivr en bayat (12 saate kadar, olculdu).
+      var secilen = gecerli[0];
+      gecerli.forEach(function (s) {
+        if (_sonBaslangic(s.veri) > _sonBaslangic(secilen.veri)) secilen = s;
+      });
+      var fark = tabloFarki(AYARLAR_VERI, secilen.veri);
+      tabloyuKur(secilen.veri);   // elle girisler varsa onlari da ekler
+      S.tablo_kaynagi = secilen.ad;
+      if (fark.eklenen.length || fark.degisen.length) {
+        var ne = [];
+        if (fark.eklenen.length) ne.push(fark.eklenen.map(_donemYaz).join(", ") + " eklendi");
+        if (fark.degisen.length) ne.push(fark.degisen.map(_donemYaz).join(", ") + " düzeltildi");
+        kaynakYaz("guncel", "Asgari ücret tablosu internetten GÜNCELLENDİ (" + secilen.ad + ")",
+          ": " + ne.join(", ") + ". Şimdi " + _sonDonemMetni(S.ayarlar_resmi) + ".", ayrinti);
+      } else {
+        kaynakYaz("guncel", "Asgari ücret tablosu güncel",
+          " — internetten kontrol edildi (" + secilen.ad + "), " +
+          _sonDonemMetni(S.ayarlar_resmi) + ".", ayrinti);
+      }
+      // Kullanici henuz bir sey yapmadiysa acilis mesajini tazele; yaptiysa
+      // onun durumunu ezme.
+      if (E("durum_metni").textContent === S.ilk_durum) ayarlarDurumu();
+    });
+  }
+
+  function cevrimiciBaslat() {
+    var g = cevrimiciGuncelle();
+    if (!g) return;
+    S.guncelleme = g.then(
+      function () { S.guncelleme = null; },
+      function (e) {
+        S.guncelleme = null;
+        kaynakYaz("yedek", "Tablo kontrolünde beklenmedik hata",
+          ": " + ((e && e.message) || e) + " — dosyanın içindeki tablo kullanılıyor.", "");
+      });
+  }
+
+  // ---------------------------------- asgari ucret: ELLE girilen donemler
+  // NEDEN (11.09.2026, Ertugrul): tablo internetten gelemezse (adliye agi
+  // GitHub'i engelliyor olabilir) kullanici yeni yilin asgari ucretini ELLE
+  // girebilsin; girdigi rakam onaydan sonra saklansin, her acilista
+  // yuklensin, yanlis girdiyse duzeltilip silinebilsin.
+  //
+  // NEREDE: tarayicinin localStorage'i -- tarayici flastaki dosyanin icine
+  // YAZAMAZ, tek kalici yer bu. OLCULDU (Chromium, kalici profil): tarayici
+  // tamamen kapatilip acilinca kayit DURUYOR; dosya baska klasorden, baska
+  // adla acilinca da GORUNUYOR (file:// kokeni tek). Flasin E: ya da F:
+  // olmasi fark etmez.
+  // SINIR: kayit o BILGISAYARIN o TARAYICISINDA. Chrome'da girilen Edge'de
+  // yok. Tarayici "cikista verileri sil" ayarindaysa kayit gider; o zaman
+  // kutuda elle donem gorunmez, tablo eskiyse Uyarilar'da bagirir.
+  //
+  // ONCELIK: RESMI tablo (internetten ya da dosyanin icinden) HER ZAMAN once
+  // gelir. Elle giris yalniz resmi tabloda OLMAYAN donemi doldurur; ayni
+  // donem resmi tabloya girince elle olan kullanilmaz, fark varsa ekrana
+  // yazilir. Elle giris de internetten gelen tablo gibi tabloyuDenetle()'den
+  // gecer; celisirse KULLANILMAZ ve sebebi yazilir.
+  var ELLE_ANAHTAR = "maas_haczi.elle_asgari_ucret";
+  var elleBellek = null;   // localStorage yoksa: yalniz bu acilisla sinirli yedek
+
+  function elleOku() {
+    if (elleBellek) return elleBellek.slice();
+    S.elle_depo_hatasi = "";
+    try {
+      var ham = window.localStorage.getItem(ELLE_ANAHTAR);
+      var liste = ham ? JSON.parse(ham) : [];
+      if (!Array.isArray(liste)) throw new Error("kayıt biçimi bozuk");
+      return liste.filter(function (e) {
+        var iyi = e && /^\d{4}-(0[1-9]|1[0-2])$/.test(String(e.baslangic)) &&
+          _sayiMi(e.net) && _sayiMi(e.brut) && _sayiMi(e.ceyrek);
+        if (!iyi) S.elle_depo_hatasi = "Kayıtlı elle girişlerden biri bozuktu, kullanılmadı.";
+        return iyi;
+      });
+    } catch (e) {
+      S.elle_depo_hatasi = "Kayıtlı elle girişler okunamadı (" + e.message + ").";
+      return [];
+    }
+  }
+
+  function elleYaz(liste) {
+    try {
+      window.localStorage.setItem(ELLE_ANAHTAR, JSON.stringify(liste));
+      elleBellek = null;
+      S.elle_depo_hatasi = "";
+      return true;
+    } catch (e) {
+      elleBellek = liste.slice();
+      S.elle_depo_hatasi = "Bu tarayıcı kayıt tutmaya izin vermiyor: elle girilen " +
+        "asgari ücret SADECE bu açılışta geçerli, sayfa kapanınca kaybolur.";
+      return false;
+    }
+  }
+
+  function _donemSirala(a, b) { return a.baslangic < b.baslangic ? -1 : (a.baslangic > b.baslangic ? 1 : 0); }
+
+  // Resmi tabloyu (temel) kurar, elle girisleri ekler, S.ayarlar'i yazar.
+  function tabloyuKur(temel) {
+    S.temel = temel;
+    S.ayarlar_resmi = Hesap.Ayarlar.kur(temel);
+    var elle = elleOku();
+    var veri = JSON.parse(JSON.stringify(temel));
+    var resmi = {}, kullanilan = [], ezilen = [];
+    veri.donemler.forEach(function (d) { resmi[d.baslangic] = d; });
+    elle.forEach(function (e) {
+      var r = resmi[e.baslangic];
+      if (r) {
+        var ayni = r.net === e.net && r.brut === e.brut && (!("ceyrek" in r) || r.ceyrek === e.ceyrek);
+        ezilen.push("Elle girdiğin " + _donemYaz(e.baslangic) + " artık resmi tabloda var" +
+          (ayni ? ", rakam da aynı — elle kaydı silebilirsin." :
+           "; RESMİ rakam kullanılıyor (resmi net " + Hesap.tl(r.net) + " TL, senin girdiğin " +
+           Hesap.tl(e.net) + " TL)."));
+        return;
+      }
+      veri.donemler.push({ baslangic: e.baslangic, net: e.net, ceyrek: e.ceyrek, brut: e.brut });
+      kullanilan.push(e.baslangic);
+    });
+    veri.donemler.sort(_donemSirala);
+    S.elle_red = "";
+    if (kullanilan.length) {
+      var red = tabloyuDenetle(veri, temel);
+      if (red) { S.elle_red = red; kullanilan = []; veri = temel; }
+    }
+    S.elle_kullanilan = kullanilan;
+    S.elle_ezilen = ezilen;
+    S.ayarlar = Hesap.Ayarlar.kur(veri);
+  }
+
+  function _kurus(x) { return Math.round(x * 100); }
+  // Tam sayi (kurus) aritmetigi: 33030 * 0.85 float'ta 28075,4999.. cikip
+  // asagi kirpilinca 28.075,49 olurdu (resmisi 28.075,50).
+  function netOner(brut) { return Math.floor(_kurus(brut) * 85 / 100) / 100; }
+  function ceyrekOner(net) { return Math.floor(_kurus(net) / 4) / 100; }
+
+  // "33.030" gibi tek noktali ve noktadan sonra tam 3 haneli yazim
+  // BELIRSIZ: Hesap.para_coz bunu 33,03 okuyor (masaustu de). Asgari ucret
+  // formunda bu sessizce bin kat hata demek -- sor, tahmin etme.
+  function elleSayi(ad, metin) {
+    var m = String(metin || "").replace(/\s|TL/g, "");
+    if (!m) throw new Error(ad + " boş.");
+    if (/^\d{1,3}(\.\d{3})+$/.test(m)) {
+      throw new Error(ad + " '" + metin + "' belirsiz — nokta binlik ayırıcı mı, kuruş mu? " +
+        "Kuruşuyla birlikte yaz: " + m + ",00");
+    }
+    var x = Hesap.para_coz(m);
+    if (!_sayiMi(x) || x <= 0) throw new Error(ad + " sıfırdan büyük bir tutar olmalı.");
+    return _kurus(x) / 100;
+  }
+
+  function elleDonemCoz(metin) {
+    var s = String(metin || "").trim(), m, yil, ay;
+    if ((m = s.match(/^(\d{1,2})\s*[\/.\-]\s*(\d{4})$/))) { ay = +m[1]; yil = +m[2]; }
+    else if ((m = s.match(/^(\d{4})\s*-\s*(\d{1,2})$/))) { yil = +m[1]; ay = +m[2]; }
+    if (!m || ay < 1 || ay > 12 || yil < 2000 || yil > 2100) {
+      throw new Error("Dönem anlaşılamadı — ay/yıl olarak yaz, örnek: 01/2027");
+    }
+    return yil + "-" + (ay < 10 ? "0" : "") + ay;
+  }
+
+  // Tablo degisti: kutuyu tazele, ekranda sonuc varsa yeniden hesapla.
+  function elleSonrasi(mesaj) {
+    kutuyuCiz();
+    var yeniden = !!S.sonuc;
+    if (yeniden) hesaplaIstek();
+    durum(mesaj + (S.elle_depo_hatasi ? " DİKKAT: " + S.elle_depo_hatasi :
+      " Bu bilgisayarda saklanıyor, her açılışta kullanılacak.") +
+      (yeniden ? " Ekrandaki sonuç yeni tabloyla yeniden hesaplandı." : ""));
+  }
+
+  function elleGirisPenceresi() {
+    ortuAc("Asgari ücreti elle gir", function (ic) {
+      var p = document.createElement("p");
+      p.className = "ipucu";
+      p.textContent = "Program asgari ücreti önce internetten almaya çalışır. " +
+        "Alamazsa yeni dönemi buradan gir: Çalışma Bakanlığı'nın açıkladığı brüt " +
+        "asgari ücreti yaz, net ve 1/4 kendiliğinden önerilir (istersen değiştir). " +
+        "Girdiğin rakam bu bilgisayarda, bu tarayıcıda saklanır ve her açılışta " +
+        "kullanılır. Aynı dönem resmi tabloya (internetten ya da programın içinden) " +
+        "girerse resmi rakam kullanılır.";
+      ic.appendChild(p);
+      var P = { liste: document.createElement("div"), form: document.createElement("div") };
+      P.form.className = "elle-form";
+      ic.appendChild(P.liste);
+      ic.appendChild(P.form);
+      elleListeCiz(P);
+      elleFormCiz(P, null);
+    });
+  }
+
+  function _dugme(id, metin, sinif) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.id = id;
+    b.textContent = metin;
+    if (sinif) b.className = sinif;
+    return b;
+  }
+
+  function elleListeCiz(P) {
+    var L = P.liste, kayitlar = elleOku();
+    L.textContent = "";
+    var h = document.createElement("h4");
+    h.textContent = "Bu bilgisayarda kayıtlı elle girişler";
+    L.appendChild(h);
+    if (!kayitlar.length) {
+      var y = document.createElement("p");
+      y.className = "ipucu";
+      y.textContent = "Henüz yok.";
+      L.appendChild(y);
+      return;
+    }
+    var t = document.createElement("table");
+    t.innerHTML = "<thead><tr><th>Dönem</th><th class='sayi'>Brüt</th><th class='sayi'>Net</th>" +
+      "<th class='sayi'>1/4</th><th>Durum</th><th></th></tr></thead>";
+    var tb = document.createElement("tbody");
+    kayitlar.sort(_donemSirala).forEach(function (k) {
+      var tr = document.createElement("tr");
+      var resmide = S.temel.donemler.some(function (d) { return d.baslangic === k.baslangic; });
+      var dm = S.elle_kullanilan.indexOf(k.baslangic) >= 0 ? "kullanılıyor" :
+        (resmide ? "resmi rakam geldi, kullanılmıyor" : "KULLANILMIYOR — tabloyla çelişiyor");
+      [_donemYaz(k.baslangic), Hesap.tl(k.brut), Hesap.tl(k.net), Hesap.tl(k.ceyrek), dm]
+        .forEach(function (v, i) {
+          var td = document.createElement("td");
+          td.textContent = v;
+          if (i > 0 && i < 4) td.className = "sayi";
+          tr.appendChild(td);
+        });
+      var islem = document.createElement("td");
+      function islemleriCiz() {
+        islem.textContent = "";
+        var duz = _dugme("elle_duzelt_" + k.baslangic, "Düzelt");
+        duz.onclick = function () { elleFormCiz(P, k); };
+        var sil = _dugme("elle_sil_" + k.baslangic, "Sil");
+        sil.onclick = function () {
+          islem.textContent = "Silinsin mi? ";
+          var evet = _dugme("elle_sil_evet", "Evet, sil");
+          evet.onclick = function () {
+            elleYaz(elleOku().filter(function (x) { return x.baslangic !== k.baslangic; }));
+            tabloyuKur(S.temel);
+            ortuKapat();
+            elleSonrasi(_donemYaz(k.baslangic) + " için elle girilen asgari ücret silindi.");
+          };
+          var vazgec = _dugme("elle_sil_vazgec", "Vazgeç");
+          vazgec.onclick = islemleriCiz;
+          islem.appendChild(evet);
+          islem.appendChild(vazgec);
+        };
+        islem.appendChild(duz);
+        islem.appendChild(sil);
+      }
+      islemleriCiz();
+      tr.appendChild(islem);
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    L.appendChild(t);
+  }
+
+  function elleFormCiz(P, kayit) {
+    var f = P.form;
+    f.textContent = "";
+    var h = document.createElement("h4");
+    h.textContent = kayit ? _donemYaz(kayit.baslangic) + " dönemini düzelt" : "Yeni dönem ekle";
+    f.appendChild(h);
+    var satir = document.createElement("div");
+    satir.className = "satir";
+    function alan(id, etiket, deger) {
+      var d = document.createElement("div");
+      d.className = "alan";
+      var l = document.createElement("label");
+      l.htmlFor = id;
+      l.textContent = etiket;
+      var i = document.createElement("input");
+      i.type = "text";
+      i.id = id;
+      i.value = deger;
+      d.appendChild(l);
+      d.appendChild(i);
+      satir.appendChild(d);
+      return i;
+    }
+    var el = {
+      donem: alan("elle_donem", "Dönem başlangıcı (ay/yıl)", kayit ? _donemYaz(kayit.baslangic) : ""),
+      brut: alan("elle_brut", "Brüt asgari ücret (TL)", kayit ? Hesap.tl(kayit.brut) : ""),
+      net: alan("elle_net", "Net (brüt × 0,85)", kayit ? Hesap.tl(kayit.net) : ""),
+      ceyrek: alan("elle_ceyrek", "1/4 (net ÷ 4, aşağı kırpılır)", kayit ? Hesap.tl(kayit.ceyrek) : ""),
+    };
+    el.donem.placeholder = "01/2027";
+    f.appendChild(satir);
+    var mesaj = document.createElement("div");
+    mesaj.id = "elle_mesaj";
+    mesaj.className = "elle-mesaj";
+    f.appendChild(mesaj);
+    var dugmeler = document.createElement("div");
+    dugmeler.className = "satir";
+    dugmeler.style.marginTop = "10px";
+    var kaydet = _dugme("elle_kaydet", "Kaydet", "ana");
+    dugmeler.appendChild(kaydet);
+    f.appendChild(dugmeler);
+
+    // Net ve 1/4 kullanici elle degistirmedikce oneriden gelir.
+    var oto = {
+      net: !kayit || kayit.net === netOner(kayit.brut),
+      ceyrek: !kayit || kayit.ceyrek === ceyrekOner(kayit.net),
+    };
+    var onay085 = false;
+    function temizle() {
+      onay085 = false;
+      mesaj.textContent = "";
+      mesaj.className = "elle-mesaj";
+      kaydet.classList.remove("yok");
+      var eski = f.querySelector(".elle-onay-dugmeleri");
+      if (eski) eski.remove();
+    }
+    function ceyrekTazele() {
+      try { el.ceyrek.value = Hesap.tl(ceyrekOner(elleSayi("Net", el.net.value))); }
+      catch (e) { el.ceyrek.value = ""; }
+    }
+    el.brut.addEventListener("input", function () {
+      temizle();
+      if (oto.net) {
+        try { el.net.value = Hesap.tl(netOner(elleSayi("Brüt", el.brut.value))); }
+        catch (e) { el.net.value = ""; }
+      }
+      if (oto.ceyrek) ceyrekTazele();
+    });
+    el.net.addEventListener("input", function () { temizle(); oto.net = false; if (oto.ceyrek) ceyrekTazele(); });
+    el.ceyrek.addEventListener("input", function () { temizle(); oto.ceyrek = false; });
+    el.donem.addEventListener("input", temizle);
+
+    kaydet.onclick = function () {
+      var yeni, liste;
+      try {
+        var b = elleDonemCoz(el.donem.value);
+        if (S.temel.donemler.some(function (d) { return d.baslangic === b; })) {
+          throw new Error(_donemYaz(b) + " dönemi resmi tabloda zaten var — elle girmeye " +
+            "gerek yok, resmi rakam kullanılıyor.");
+        }
+        yeni = { baslangic: b, brut: elleSayi("Brüt", el.brut.value),
+          net: elleSayi("Net", el.net.value), ceyrek: elleSayi("1/4", el.ceyrek.value) };
+        liste = elleOku().filter(function (x) {
+          return x.baslangic !== b && (!kayit || x.baslangic !== kayit.baslangic);
+        });
+        liste.push(yeni);
+        // Denetim: resmi tablo + BUTUN elle girisler birlikte tutarli mi?
+        var deneme = JSON.parse(JSON.stringify(S.temel));
+        liste.forEach(function (x) {
+          deneme.donemler.push({ baslangic: x.baslangic, net: x.net, ceyrek: x.ceyrek, brut: x.brut });
+        });
+        deneme.donemler.sort(_donemSirala);
+        var red = tabloyuDenetle(deneme, S.temel);
+        if (red) throw new Error("Kaydedilmedi: " + red + ".");
+      } catch (e) {
+        mesaj.className = "elle-mesaj hata";
+        mesaj.textContent = e.message;
+        return;
+      }
+      var oneri = netOner(yeni.brut);
+      if (Math.abs(yeni.net - oneri) > 0.005 && !onay085) {
+        onay085 = true;
+        mesaj.className = "elle-mesaj uyari";
+        mesaj.textContent = "Dikkat: girdiğin net (" + Hesap.tl(yeni.net) + " TL), brüt × 0,85'ten (" +
+          Hesap.tl(oneri) + " TL) farklı. 2022'den beri asgari ücrette net = brüt × 0,85 " +
+          "(7 dönemin 7'sinde ölçüldü). Yanlış yazmadıysan tekrar Kaydet'e bas.";
+        return;
+      }
+      mesaj.className = "elle-mesaj onay";
+      mesaj.textContent = "Kaydedilecek: " + _donemYaz(yeni.baslangic) + " dönemi — brüt " +
+        Hesap.tl(yeni.brut) + " TL, net " + Hesap.tl(yeni.net) + " TL, 1/4 = " +
+        Hesap.tl(yeni.ceyrek) + " TL. Bu bilgisayarda saklanacak ve her açılışta " +
+        "kullanılacak (bu dönem resmi tabloya girene kadar). Onaylıyor musun?";
+      kaydet.classList.add("yok");
+      var od = document.createElement("div");
+      od.className = "satir elle-onay-dugmeleri";
+      od.style.marginTop = "8px";
+      var onayla = _dugme("elle_onayla", "Onayla ve kaydet", "ana");
+      var geri = _dugme("elle_geri", "Geri dön");
+      onayla.onclick = function () {
+        elleYaz(liste);
+        tabloyuKur(S.temel);
+        ortuKapat();
+        elleSonrasi(_donemYaz(yeni.baslangic) + " asgari ücreti " +
+          (kayit ? "düzeltildi" : "kaydedildi") + ".");
+      };
+      geri.onclick = temizle;
+      od.appendChild(onayla);
+      od.appendChild(geri);
+      f.appendChild(od);
+    };
   }
 
   function ayarlariGoster() {
@@ -485,7 +1133,9 @@
       var tb = document.createElement("tbody");
       S.ayarlar.donemler.forEach(function (d) {
         var tr = document.createElement("tr");
-        [(d.ay < 10 ? "0" : "") + d.ay + "/" + d.yil,
+        var bs = d.yil + "-" + (d.ay < 10 ? "0" : "") + d.ay;
+        [(d.ay < 10 ? "0" : "") + d.ay + "/" + d.yil +
+           (S.elle_kullanilan.indexOf(bs) >= 0 ? " — ELLE GİRİLDİ" : ""),
          Hesap.tl(d.net), Hesap.tl(d.ceyrek),
          d.brut === null ? "—" : Hesap.tl(d.brut)].forEach(function (v, i) {
           var td = document.createElement("td");
@@ -499,12 +1149,16 @@
       ic.appendChild(t);
       var p = document.createElement("p");
       p.className = "ipucu";
-      p.textContent = "Yeni yılın asgari ücreti açıklandığında bu tablo " +
-        "güncellenmeli. Kaynak dosya: depo kökündeki ayarlar.json. Oraya yeni " +
-        "dönemi ekledikten sonra  node web/ayarlar_uret.js  komutu " +
-        "çalıştırılır (bu sayfanın okuduğu ayarlar_veri.js böyle üretiliyor). " +
-        "Tablo eskiyse hesap sessizce düşük çıkmaz — Uyarılar sekmesinin en " +
-        "başında bağırır.";
+      var nereden = S.tablo_kaynagi !== "gömülü" ?
+        "internetten (" + S.tablo_kaynagi + ")" :
+        (S.guncelleme ? "bu dosyanın içindeki tablo — internetten güncel hâli hâlâ kontrol ediliyor" :
+         "bu dosyanın içindeki tablo — internetten güncel hâli alınamadı");
+      p.textContent = "Bu tablonun kaynağı: " + nereden + ". Sayfa her " +
+        "açılışta tablonun güncelini internetten okumaya çalışır (depodaki " +
+        "ayarlar.json — onu her gün GitHub'daki iş Çalışma Bakanlığı'nın " +
+        "sayfasından tazeler). İnternete ulaşılamazsa dosyanın içindeki tablo " +
+        "kullanılır. Tablo eskiyse hesap sessizce düşük çıkmaz — Uyarılar " +
+        "sekmesinin en başında bağırır.";
       ic.appendChild(p);
     });
   }
@@ -614,6 +1268,45 @@
   }
 
   // ------------------------------------------------------------------ hesap
+  // Elle girilen asgari ucretle hesaplanan ay varsa Uyarilar'in BASINA yaz:
+  // tutanagin dayandigi rakamin resmi tablodan gelmedigi gorunsun.
+  function elleBilgisiEkle(s) {
+    if (!S.elle_kullanilan.length) return;
+    var aylar = [], donemler = {};
+    s.kalemler.forEach(function (k) {
+      var gecerli = null;
+      S.ayarlar.donemler.forEach(function (d) {
+        if (d.yil * 12 + d.ay <= k.yil * 12 + k.ay) gecerli = d;
+      });
+      if (!gecerli) return;
+      var b = gecerli.yil + "-" + (gecerli.ay < 10 ? "0" : "") + gecerli.ay;
+      if (S.elle_kullanilan.indexOf(b) >= 0) {
+        aylar.push((k.ay < 10 ? "0" : "") + k.ay + "/" + k.yil);
+        donemler[b] = gecerli;
+      }
+    });
+    if (!aylar.length) return;
+    s.uyarilar.unshift("[bilgi] ELLE GİRİLEN ASGARİ ÜCRET kullanıldı — " +
+      Object.keys(donemler).sort().map(function (b) {
+        return _donemYaz(b) + " dönemi: net " + Hesap.tl(donemler[b].net) + " TL, 1/4 = " +
+          Hesap.tl(donemler[b].ceyrek) + " TL";
+      }).join("; ") + ". Bu rakam resmi tablodan gelmedi, bu bilgisayarda elle " +
+      "kaydedildi. Bu rakamla hesaplanan aylar: " + aylar.join(", ") + ".");
+  }
+
+  // HESAPLA dugmesi ve elle giristen sonraki yeniden hesap bunu cagirir.
+  // Internetteki guncel tablo henuz gelmediyse BEKLER: yoksa hesap eski
+  // tabloyla yapilir, tablo bir saniye sonra degisir ve ekrandaki sonuc
+  // yanlis tabloyla kalir. Bekleme en fazla CEVRIMICI_SURE_MS.
+  function hesaplaIstek() {
+    if (S.guncelleme) {
+      durum("İnternetteki güncel asgari ücret tablosu bekleniyor…");
+      S.guncelleme.then(hesapla);
+      return;
+    }
+    hesapla();
+  }
+
   function hesapla() {
     try {
       if (!S.kayitlar.length) throw new Error("Önce SGK hizmet dökümünü seç.");
@@ -626,6 +1319,7 @@
 
       S.sonuc = Hesap.hesapla(S.kayitlar, isyeri, teblig, karar, borc,
         S.ayarlar, S.kisi, E("kusur").value);
+      elleBilgisiEkle(S.sonuc);
       sonucuGoster();
 
       var s = S.sonuc, n = s.kalemler.length, kaynak;
@@ -913,7 +1607,7 @@
     E("teblig").addEventListener("input", isverenleriYenile);
     E("karar").addEventListener("input", isverenleriYenile);
 
-    E("hesapla_dugme").onclick = hesapla;
+    E("hesapla_dugme").onclick = hesaplaIstek;
     E("kopyala_dugme").onclick = metniKopyala;
     E("word_dugme").onclick = wordeAktar;
     E("excel_dugme").onclick = exceleAktar;
@@ -944,6 +1638,7 @@
   baglaniklariKur();
   E("karar").value = bugun();
   ayarlariYukle();
+  if (S.ayarlar) cevrimiciBaslat();
 
   // ?demo=1 ile deneme bilgileri doldurulur (dosya secmek yine gerekiyor --
   // tarayici kendiliginden diskten dosya acamaz).

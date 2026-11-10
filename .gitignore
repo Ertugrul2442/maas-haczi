@@ -59,3 +59,12 @@ web/kiyas_excel_dosya/
 
 # Mutasyon testinin bozuk sayfa kopyasi (silinmezse kalir).
 web/index_mutasyon.html
+
+# Cevrimici tablo kiyasinin urettikleri (sentetik, kisisel veri yok ama
+# saniyeler icinde yeniden uretiliyor).
+web/kiyas_cevrimici_veri.json
+web/kiyas_cevrimici_dosya/
+
+# Pages is akisi yayina giden pakete koyuyor; depoda DURMAMALI (kokteki
+# ayarlar.json tek kaynak).
+web/ayarlar.json

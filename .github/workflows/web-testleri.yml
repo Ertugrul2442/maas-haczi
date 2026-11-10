@@ -154,3 +154,30 @@ jobs:
         run: |
           python web/kiyas_arayuz.py --sentetik > web/kiyas_arayuz_veri.json
           node web/kiyas_arayuz.js web/kiyas_arayuz_veri.json
+
+      # 12) TEK DOSYALIK SÜRÜM: flaşa tek başına giden "Maas Haczi.html".
+      #     11.09.2026'da adliyede yaşandı: flaşa sadece index.html gitti,
+      #     yanındaki 9 parça gitmedi, sayfa "eksik yüklendi" dedi; aynı gün
+      #     github.io da açılmadı. Tek dosya bütün parçaları içine gömüyor.
+      #
+      #     ⚠ BOŞ bir klasörde sınanıyor, bilerek. Mutasyonla ölçüldü: bir
+      #     parçası gömülmemiş dosya web/ içinde sınanınca komşu .js'ten
+      #     sessizce yükleniyor ve kıyas "0 fark" diyor — yani KANDIRILIYOR.
+      #     Boş klasörde aynı bozuk dosya kıyası çökertiyor.
+      # 13) ASGARİ ÜCRET TABLOSU İNTERNETTEN: sayfa açılışta tablonun
+      #     güncelini üç adresten okuyor. Burada o üç adres TAKLİT ediliyor:
+      #     internet yok, yeni yıl geldi, kurum ağının engelleme sayfası, beş
+      #     çeşit bozuk tablo, geç gelen / hiç gelmeyen cevap. Ölçülen SONUÇ:
+      #     yeni yıl gelince hesap masaüstü motoruyla birebir o rakamla mı
+      #     yapılıyor, bozuk tablo reddediliyor mu, döküm seçildikten sonra
+      #     dışarı istek çıkıyor mu. 6 mutasyonla sınandı, 6'sı yakalanıyor.
+      - name: Asgari ücret tablosu internetten (taklit kaynaklarla)
+        run: |
+          python web/kiyas_cevrimici.py > web/kiyas_cevrimici_veri.json
+          node web/kiyas_cevrimici.js web/kiyas_cevrimici_veri.json
+
+      - name: Tek dosyalık sürüm boş klasörde (sentetik dökümler)
+        run: |
+          mkdir -p "$RUNNER_TEMP/tek"
+          node web/tek_dosya_uret.js "$RUNNER_TEMP/tek/Maas Haczi.html"
+          node web/kiyas_arayuz.js web/kiyas_arayuz_veri.json "--sayfa=$RUNNER_TEMP/tek/Maas Haczi.html"

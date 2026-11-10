@@ -13,6 +13,10 @@ if errorlevel 1 ( echo. & echo ILK AY TESTI GECMEDI - exe yapilmadi. & pause & e
 py -3.13 test_veri_cek.py
 if errorlevel 1 ( echo. & echo VERI CEKICI TESTI GECMEDI - exe yapilmadi. & pause & exit /b 1 )
 echo.
+echo Tek dosyalik tarayici surumu yapiliyor (dagitim\Maas Haczi.html)...
+node web\tek_dosya_uret.js
+if errorlevel 1 ( echo. & echo TEK DOSYA HTML YAPILAMADI - exe de yapilmadi. & pause & exit /b 1 )
+echo.
 echo Test gecti. Exe yapiliyor (1-2 dakika)...
 py -3.13 -m PyInstaller --noconfirm --onefile --windowed --name "Maas Haczi" --hidden-import xlrd --hidden-import docx --hidden-import openpyxl --collect-data docx --distpath "dagitim" --workpath "build" --specpath "build" arayuz.py
 if errorlevel 1 ( echo. & echo EXE YAPILAMADI. & pause & exit /b 1 )

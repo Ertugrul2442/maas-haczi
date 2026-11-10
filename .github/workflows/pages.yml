@@ -24,6 +24,7 @@ on:
     branches: [main]
     paths:
       - "web/**"
+      - "ayarlar.json"          # elle düzeltme de yayına gitsin
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -68,6 +69,14 @@ jobs:
           node-version: "20"
       - name: Ayarlar bekçisi
         run: node web/ayarlar_uret.js --kontrol
+
+      # Sayfa her açılışta asgari ücret tablosunun GÜNCELİNİ internetten
+      # okuyor (index.html, cevrimiciGuncelle) ve üç kaynaktan biri burası:
+      #   https://ertugrul2442.github.io/maas-haczi/ayarlar.json
+      # Depoya ikinci bir kopya KONMUYOR — sadece yayına giden pakete o an
+      # kökteki ayarlar.json kopyalanıyor, yani ayrışma ihtimali yok.
+      - name: Asgari ücret tablosunu yayına ekle
+        run: cp ayarlar.json web/ayarlar.json
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

@@ -169,7 +169,11 @@ async function main() {
     path.join(__dirname, "kiyas_arayuz_veri.json");
   const veri = JSON.parse(fs.readFileSync(veriYolu, "utf8"));
   const { modul, nereden } = playwrightBul();
-  const sayfaYolu = url.pathToFileURL(path.join(__dirname, sayfaAdi)).href;
+  // Mutlak yol da kabul: tek dosyalik surum (web/tek_dosya_uret.js) BOS bir
+  // klasorde sinanmali -- web/ altinda sinansa, gomulmemis bir <script src>
+  // komsu dosyadan sessizce yuklenir ve kiyas yalandan yesil yanardi.
+  const sayfaYolu = url.pathToFileURL(
+    path.isAbsolute(sayfaAdi) ? sayfaAdi : path.join(__dirname, sayfaAdi)).href;
 
   console.log("=".repeat(72));
   console.log("ARAYUZ KIYASI - masaustu (arayuz.py) vs tarayici (index.html)");
@@ -179,8 +183,19 @@ async function main() {
 
   const tarayici = await modul.chromium.launch();
 
+  // Sayfa acilista asgari ucret tablosunun gunceli icin internete cikiyor
+  // (index.html, cevrimiciGuncelle). Bu kiyas internete BAGIMLI olmasin ve
+  // Python'la AYNI tabloyu kullansin diye o istekler depodaki ayarlar.json
+  // ile cevaplaniyor. Internetsiz / reddedilen / yavas gelen durumlar ayri
+  // olculuyor: web/kiyas_cevrimici.js.
+  const AYARLAR_METNI = fs.readFileSync(path.join(__dirname, "..", "ayarlar.json"), "utf8");
+
   for (const d of veri.durumlar) {
     const baglam = await tarayici.newContext({ acceptDownloads: true });
+    await baglam.route(/^https?:\/\//, (r) => r.fulfill({
+      status: 200, contentType: "application/json", body: AYARLAR_METNI,
+      headers: { "access-control-allow-origin": "*" },
+    }));
     const p = await baglam.newPage();
     const sayfaHatalari = [];
     p.on("pageerror", (e) => sayfaHatalari.push("pageerror: " + e.message));
@@ -189,6 +204,11 @@ async function main() {
     });
 
     await p.goto(sayfaYolu);
+    // Tablo kontrolu bitmeden HESAPLA'ya basilirsa sayfa bekler (dogru
+    // davranis) ama kiyas sonucu erken okur. Once kontrolun bitmesini bekle.
+    await p.waitForFunction("window.UYGULAMA && window.UYGULAMA.guncelleme === null",
+      null, { timeout: 15000 });
+    esit(d.ad, "tablo_kaynagi", await p.evaluate(() => window.UYGULAMA.tablo_kaynagi), "GitHub");
     const B = d.beklenen;
 
     // --- dosya yuklendi, tarihler HENUZ girilmedi
